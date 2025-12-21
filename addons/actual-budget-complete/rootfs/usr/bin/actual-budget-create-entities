@@ -1,0 +1,116 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Create Home Assistant Entities for Actual Budget Dashboard
+# ==============================================================================
+
+# Wait for Home Assistant to be ready
+bashio::log.info "Creating Home Assistant entities for Actual Budget dashboard..."
+
+# Function to create or update entity
+create_entity() {
+    local entity_id="$1"
+    local name="$2"
+    local device_class="$3"
+    local icon="$4"
+    local unit="$5"
+    local initial_state="$6"
+    local attributes="$7"
+    
+    local payload="{
+        \"state\": \"${initial_state}\",
+        \"attributes\": {
+            \"friendly_name\": \"${name}\",
+            \"device_class\": \"${device_class}\",
+            \"icon\": \"${icon}\",
+            \"unit_of_measurement\": \"${unit}\",
+            ${attributes}
+        }
+    }"
+    
+    curl -s -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}" \
+        "http://supervisor/core/api/states/${entity_id}" > /dev/null
+    
+    bashio::log.debug "Created entity: ${entity_id}"
+}
+
+# Create system status entities
+create_entity "sensor.actual_budget_system_status" \
+    "Actual Budget System" \
+    "" \
+    "mdi:calculator-variant" \
+    "" \
+    "initializing" \
+    '"description": "Overall system status - shows running, degraded, or failed", "tooltip": "Green=All services running, Yellow=Some issues, Red=Critical failure"'
+
+create_entity "sensor.actual_budget_api_status" \
+    "API Server Status" \
+    "" \
+    "mdi:api" \
+    "" \
+    "initializing" \
+    '"description": "Node.js API server status", "tooltip": "The API server handles Actual Budget integration and Xero sync operations"'
+
+create_entity "sensor.actual_budget_server_status" \
+    "Actual Budget Server" \
+    "" \
+    "mdi:server" \
+    "" \
+    "initializing" \
+    '"description": "Official Actual Budget server status", "tooltip": "The main Actual Budget application server for budget management"'
+
+# Create sync status entities
+create_entity "sensor.actual_budget_last_sync" \
+    "Last Sync Time" \
+    "timestamp" \
+    "mdi:sync" \
+    "" \
+    "never" \
+    '"description": "Last successful synchronization time", "tooltip": "Shows when transactions were last synced to Xero"'
+
+create_entity "sensor.actual_budget_sync_status" \
+    "Sync Status" \
+    "" \
+    "mdi:sync" \
+    "" \
+    "idle" \
+    '"description": "Current synchronization status", "tooltip": "idle=Ready, syncing=In progress, failed=Error occurred"'
+
+# Create statistics entities
+create_entity "sensor.actual_budget_transactions_processed" \
+    "Transactions Processed" \
+    "" \
+    "mdi:counter" \
+    "transactions" \
+    "0" \
+    '"description": "Total transactions processed", "tooltip": "PLACEHOLDER: This shows test data until first sync completes"'
+
+create_entity "sensor.actual_budget_successful_imports" \
+    "Successful Imports" \
+    "" \
+    "mdi:check-circle" \
+    "transactions" \
+    "0" \
+    '"description": "Successfully imported to Xero", "tooltip": "PLACEHOLDER: This shows test data until first sync completes"'
+
+create_entity "sensor.actual_budget_failed_transactions" \
+    "Failed Transactions" \
+    "" \
+    "mdi:alert-circle" \
+    "transactions" \
+    "0" \
+    '"description": "Failed transaction imports", "tooltip": "PLACEHOLDER: This shows test data until first sync completes"'
+
+create_entity "sensor.actual_budget_pending_mappings" \
+    "Pending Mappings" \
+    "" \
+    "mdi:map-marker-question" \
+    "mappings" \
+    "0" \
+    '"description": "Transactions awaiting category mapping", "tooltip": "PLACEHOLDER: This shows test data until first sync completes"'
+
+# Create action button entities (these will be handled by the HA integration service)
+bashio::log.info "Entities created successfully. Dashboard tiles will appear in Home Assistant."
+bashio::log.info "Note: Statistics show placeholder values until first sync operation."

@@ -1,0 +1,261 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Actual Budget Service Manager
+# Manages API server, Actual Budget server, and HA integration
+# ==============================================================================
+
+set -e
+
+# Configuration
+MANAGE_API_SERVER=$(bashio::config 'manage_api_server')
+MANAGE_ACTUAL_SERVER=$(bashio::config 'manage_actual_server')
+API_SERVER_PORT=$(bashio::config 'api_server_port')
+ACTUAL_SERVER_PORT=$(bashio::config 'actual_server_port')
+HEALTH_CHECK_INTERVAL=$(bashio::config 'health_check_interval')
+AUTO_RESTART_SERVICES=$(bashio::config 'auto_restart_services')
+
+# Service PIDs
+API_SERVER_PID=""
+ACTUAL_SERVER_PID=""
+HA_INTEGRATION_PID=""
+
+# Service status tracking
+API_SERVER_STATUS="stopped"
+ACTUAL_SERVER_STATUS="stopped"
+LAST_SYNC_TIME=""
+SYNC_STATUS="idle"
+
+# Cleanup function
+cleanup() {
+    bashio::log.info "Shutting down services..."
+    
+    if [[ -n "${API_SERVER_PID}" ]]; then
+        kill "${API_SERVER_PID}" 2>/dev/null || true
+    fi
+    
+    if [[ -n "${ACTUAL_SERVER_PID}" ]]; then
+        kill "${ACTUAL_SERVER_PID}" 2>/dev/null || true
+    fi
+    
+    if [[ -n "${HA_INTEGRATION_PID}" ]]; then
+        kill "${HA_INTEGRATION_PID}" 2>/dev/null || true
+    fi
+    
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
+
+# Function to start API server
+start_api_server() {
+    if [[ "${MANAGE_API_SERVER}" == "true" ]]; then
+        bashio::log.info "Starting Node.js API server on port ${API_SERVER_PORT}..."
+        
+        cd /opt/actual-budget-api
+        PORT="${API_SERVER_PORT}" node index.js &
+        API_SERVER_PID=$!
+        API_SERVER_STATUS="starting"
+        
+        # Wait for server to start
+        sleep 5
+        if kill -0 "${API_SERVER_PID}" 2>/dev/null; then
+            API_SERVER_STATUS="running"
+            bashio::log.info "API server started successfully (PID: ${API_SERVER_PID})"
+            update_ha_entity "sensor.actual_budget_api_status" "running" '{"port": "'${API_SERVER_PORT}'", "pid": "'${API_SERVER_PID}'"}'
+        else
+            API_SERVER_STATUS="failed"
+            bashio::log.error "API server failed to start"
+            update_ha_entity "sensor.actual_budget_api_status" "failed" '{"error": "Failed to start"}'
+        fi
+    else
+        bashio::log.info "API server management disabled"
+        API_SERVER_STATUS="external"
+        update_ha_entity "sensor.actual_budget_api_status" "external" '{"managed": false}'
+    fi
+}
+
+# Function to start Actual Budget server
+start_actual_server() {
+    if [[ "${MANAGE_ACTUAL_SERVER}" == "true" ]]; then
+        bashio::log.info "Starting Actual Budget server on port ${ACTUAL_SERVER_PORT}..."
+        
+        cd /opt/actual-budget-server
+        PORT="${ACTUAL_SERVER_PORT}" npm start &
+        ACTUAL_SERVER_PID=$!
+        ACTUAL_SERVER_STATUS="starting"
+        
+        # Wait for server to start
+        sleep 10
+        if kill -0 "${ACTUAL_SERVER_PID}" 2>/dev/null; then
+            ACTUAL_SERVER_STATUS="running"
+            bashio::log.info "Actual Budget server started successfully (PID: ${ACTUAL_SERVER_PID})"
+            update_ha_entity "sensor.actual_budget_server_status" "running" '{"port": "'${ACTUAL_SERVER_PORT}'", "pid": "'${ACTUAL_SERVER_PID}'"}'
+        else
+            ACTUAL_SERVER_STATUS="failed"
+            bashio::log.error "Actual Budget server failed to start"
+            update_ha_entity "sensor.actual_budget_server_status" "failed" '{"error": "Failed to start"}'
+        fi
+    else
+        bashio::log.info "Actual Budget server management disabled"
+        ACTUAL_SERVER_STATUS="external"
+        update_ha_entity "sensor.actual_budget_server_status" "external" '{"managed": false}'
+    fi
+}
+
+# Function to update Home Assistant entity
+update_ha_entity() {
+    local entity_id="$1"
+    local state="$2"
+    local attributes="$3"
+    
+    local payload="{\"state\": \"${state}\", \"attributes\": ${attributes}}"
+    
+    curl -s -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}" \
+        "http://supervisor/core/api/states/${entity_id}" > /dev/null || true
+}
+
+# Function to check service health
+check_service_health() {
+    local service_name="$1"
+    local pid="$2"
+    local port="$3"
+    
+    # Check if process is running
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        return 1
+    fi
+    
+    # Check if port is responding
+    if ! curl -s -f "http://localhost:${port}/health" > /dev/null 2>&1; then
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to restart service
+restart_service() {
+    local service_name="$1"
+    
+    bashio::log.warning "Restarting ${service_name}..."
+    
+    case "${service_name}" in
+        "api")
+            if [[ -n "${API_SERVER_PID}" ]]; then
+                kill "${API_SERVER_PID}" 2>/dev/null || true
+                sleep 2
+            fi
+            start_api_server
+            ;;
+        "actual")
+            if [[ -n "${ACTUAL_SERVER_PID}" ]]; then
+                kill "${ACTUAL_SERVER_PID}" 2>/dev/null || true
+                sleep 2
+            fi
+            start_actual_server
+            ;;
+    esac
+}
+
+# Function to handle manual sync trigger
+handle_sync_trigger() {
+    bashio::log.info "Manual sync triggered"
+    SYNC_STATUS="syncing"
+    update_ha_entity "sensor.actual_budget_sync_status" "syncing" '{"triggered_by": "manual", "started_at": "'$(date -Iseconds)'"}'
+    
+    # Call sync API
+    local sync_result
+    if sync_result=$(curl -s -X POST "http://localhost:${API_SERVER_PORT}/api/sync/trigger" 2>/dev/null); then
+        LAST_SYNC_TIME=$(date -Iseconds)
+        SYNC_STATUS="completed"
+        bashio::log.info "Sync completed successfully"
+        update_ha_entity "sensor.actual_budget_last_sync" "${LAST_SYNC_TIME}" '{"status": "success", "result": "Manual sync completed"}'
+        update_ha_entity "sensor.actual_budget_sync_status" "idle" '{"last_sync": "'${LAST_SYNC_TIME}'", "status": "success"}'
+    else
+        SYNC_STATUS="failed"
+        bashio::log.error "Sync failed"
+        update_ha_entity "sensor.actual_budget_sync_status" "failed" '{"error": "Sync API call failed", "failed_at": "'$(date -Iseconds)'"}'
+    fi
+}
+
+# Main service loop
+main() {
+    bashio::log.info "Starting Actual Budget service manager..."
+    
+    # Start services
+    start_api_server
+    start_actual_server
+    
+    # Start HA integration service
+    /usr/bin/actual-budget-ha-integration &
+    HA_INTEGRATION_PID=$!
+    
+    # Initialize HA entities
+    update_ha_entity "sensor.actual_budget_system_status" "running" '{"version": "2.0.0", "started_at": "'$(date -Iseconds)'"}'
+    update_ha_entity "sensor.actual_budget_sync_status" "idle" '{"auto_sync": "'$(bashio::config 'auto_sync_enabled')'"}'
+    
+    bashio::log.info "All services started, entering monitoring loop..."
+    
+    # Main monitoring loop
+    while true; do
+        sleep "${HEALTH_CHECK_INTERVAL}"
+        
+        # Check API server health
+        if [[ "${MANAGE_API_SERVER}" == "true" && "${API_SERVER_STATUS}" == "running" ]]; then
+            if ! check_service_health "api" "${API_SERVER_PID}" "${API_SERVER_PORT}"; then
+                bashio::log.warning "API server health check failed"
+                API_SERVER_STATUS="unhealthy"
+                update_ha_entity "sensor.actual_budget_api_status" "unhealthy" '{"last_check": "'$(date -Iseconds)'"}'
+                
+                if [[ "${AUTO_RESTART_SERVICES}" == "true" ]]; then
+                    restart_service "api"
+                fi
+            else
+                if [[ "${API_SERVER_STATUS}" != "running" ]]; then
+                    API_SERVER_STATUS="running"
+                    update_ha_entity "sensor.actual_budget_api_status" "running" '{"last_check": "'$(date -Iseconds)'"}'
+                fi
+            fi
+        fi
+        
+        # Check Actual Budget server health
+        if [[ "${MANAGE_ACTUAL_SERVER}" == "true" && "${ACTUAL_SERVER_STATUS}" == "running" ]]; then
+            if ! check_service_health "actual" "${ACTUAL_SERVER_PID}" "${ACTUAL_SERVER_PORT}"; then
+                bashio::log.warning "Actual Budget server health check failed"
+                ACTUAL_SERVER_STATUS="unhealthy"
+                update_ha_entity "sensor.actual_budget_server_status" "unhealthy" '{"last_check": "'$(date -Iseconds)'"}'
+                
+                if [[ "${AUTO_RESTART_SERVICES}" == "true" ]]; then
+                    restart_service "actual"
+                fi
+            else
+                if [[ "${ACTUAL_SERVER_STATUS}" != "running" ]]; then
+                    ACTUAL_SERVER_STATUS="running"
+                    update_ha_entity "sensor.actual_budget_server_status" "running" '{"last_check": "'$(date -Iseconds)'"}'
+                fi
+            fi
+        fi
+        
+        # Update system status
+        local system_status="running"
+        if [[ "${API_SERVER_STATUS}" == "failed" || "${ACTUAL_SERVER_STATUS}" == "failed" ]]; then
+            system_status="degraded"
+        elif [[ "${API_SERVER_STATUS}" == "unhealthy" || "${ACTUAL_SERVER_STATUS}" == "unhealthy" ]]; then
+            system_status="unhealthy"
+        fi
+        
+        update_ha_entity "sensor.actual_budget_system_status" "${system_status}" '{
+            "api_status": "'${API_SERVER_STATUS}'",
+            "actual_status": "'${ACTUAL_SERVER_STATUS}'",
+            "sync_status": "'${SYNC_STATUS}'",
+            "last_check": "'$(date -Iseconds)'"
+        }'
+    done
+}
+
+# Start main function
+main "$@"

@@ -1,0 +1,29 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Actual Budget Complete Add-on - Main Service
+# ==============================================================================
+
+declare config_file="/data/options.json"
+
+# Wait for Home Assistant API to be available
+bashio::log.info "Waiting for Home Assistant API..."
+bashio::api.supervisor "GET" "/info" false 30
+
+# Parse configuration
+bashio::log.info "Loading configuration..."
+MANAGE_API_SERVER=$(bashio::config 'manage_api_server')
+MANAGE_ACTUAL_SERVER=$(bashio::config 'manage_actual_server')
+API_SERVER_PORT=$(bashio::config 'api_server_port')
+ACTUAL_SERVER_PORT=$(bashio::config 'actual_server_port')
+LOG_LEVEL=$(bashio::config 'log_level')
+
+# Set log level
+bashio::log.level "${LOG_LEVEL}"
+
+# Create Home Assistant entities
+bashio::log.info "Creating Home Assistant entities..."
+/usr/bin/actual-budget-create-entities
+
+# Start service manager
+bashio::log.info "Starting Actual Budget service manager..."
+exec /usr/bin/actual-budget-service-manager

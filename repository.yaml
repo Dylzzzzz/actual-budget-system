@@ -1,0 +1,4 @@
+name: "Actual Budget System"
+url: "https://github.com/Dylzzzzz/actual-budget-system"
+maintainer: "Dylan Halliday"
+description: "Complete Actual Budget integration system with native HA dashboard, API server management, and Xero sync capabilities"
