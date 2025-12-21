@@ -190,6 +190,7 @@ bashio::log.info "💡 Add-on will run continuously and update dashboard every 2
 # Initialize loop counter
 loop_count=0
 
+# Infinite loop to keep the service running
 while true; do
     ((loop_count++))
     bashio::log.debug "🔄 Health check cycle ${loop_count}"
@@ -228,7 +229,7 @@ while true; do
     
     # Update system status with current timestamp
     update_entity_state "sensor.actual_budget_system_status" "running" \
-        '{"friendly_name": "System Status", "icon": "mdi:calculator-variant", "description": "Native HA integration active", "last_update": "'$(date -Iseconds)'", "version": "2.0.1", "integration_type": "native_dashboard", "loop_count": '${loop_count}'}'
+        '{"friendly_name": "System Status", "icon": "mdi:calculator-variant", "description": "Native HA integration active", "last_update": "'$(date -Iseconds)'", "version": "2.0.2", "integration_type": "native_dashboard", "loop_count": '${loop_count}'}'
     
     # Log status every 10 cycles (20 minutes)
     if (( loop_count % 10 == 0 )); then
@@ -236,8 +237,10 @@ while true; do
     fi
     
     # Sleep for 2 minutes before next health check
-    # Use a loop to allow for signal handling during sleep
-    for i in {1..120}; do
-        sleep 1
-    done
+    # Use sleep with explicit duration to ensure proper blocking
+    sleep 120 || true
 done
+
+# This line should never be reached
+bashio::log.error "❌ Monitoring loop exited unexpectedly!"
+exit 1
