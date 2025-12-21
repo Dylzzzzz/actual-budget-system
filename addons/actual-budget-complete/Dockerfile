@@ -8,36 +8,28 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apk add --no-cache \
     nodejs \
     npm \
-    python3 \
-    make \
-    g++ \
-    git \
     curl \
-    jq \
-    sqlite
+    jq
 
 # Create app directories
 RUN mkdir -p /opt/actual-budget-api \
-    && mkdir -p /opt/actual-budget-server \
-    && mkdir -p /opt/addon \
     && mkdir -p /data/actual-budget \
     && mkdir -p /var/log/actual-budget
 
-# For now, we'll create a simple placeholder structure
-# The add-on will focus on creating HA entities and dashboard integration
+# Create placeholder files
 RUN echo '{"name": "actual-budget-api", "version": "2.0.0"}' > /opt/actual-budget-api/package.json \
     && echo 'console.log("API server placeholder");' > /opt/actual-budget-api/index.js
 
 # Copy add-on files
 COPY rootfs/ /
 
-# Set permissions
-RUN chmod +x /etc/services.d/*/run \
-    && chmod +x /etc/services.d/*/finish
+# Set permissions explicitly
+RUN chmod +x /etc/services.d/actual-budget-addon/run \
+    && chmod +x /etc/services.d/actual-budget-addon/finish
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:3001/health || exit 1
+    CMD curl -f http://supervisor/core/api/info -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" || exit 1
 
 # Labels
 LABEL \

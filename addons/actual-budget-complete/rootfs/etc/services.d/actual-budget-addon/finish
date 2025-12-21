@@ -1,0 +1,9 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Actual Budget Complete Add-on - Finish Script
+# ==============================================================================
+
+bashio::log.info "🛑 Actual Budget add-on shutting down..."
+
+# Clean up any resources if needed
+bashio::log.info "✅ Shutdown complete"
