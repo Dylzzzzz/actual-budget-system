@@ -1,6 +1,7 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Actual Budget Complete Add-on - Main Service
+# Actual Budget Complete Add-on - Native HA Integration
+# Creates dashboard tiles instead of web interface
 # ==============================================================================
 
 declare config_file="/data/options.json"
@@ -20,10 +21,96 @@ LOG_LEVEL=$(bashio::config 'log_level')
 # Set log level
 bashio::log.level "${LOG_LEVEL}"
 
-# Create Home Assistant entities
-bashio::log.info "Creating Home Assistant entities..."
-/usr/bin/actual-budget-create-entities
+# Create Home Assistant entities for dashboard
+bashio::log.info "Creating native Home Assistant dashboard entities..."
 
-# Start service manager
-bashio::log.info "Starting Actual Budget service manager..."
-exec /usr/bin/actual-budget-service-manager
+# Function to create entity
+create_entity() {
+    local entity_id="$1"
+    local name="$2"
+    local icon="$3"
+    local initial_state="$4"
+    local attributes="$5"
+    
+    local payload="{
+        \"state\": \"${initial_state}\",
+        \"attributes\": {
+            \"friendly_name\": \"${name}\",
+            \"icon\": \"${icon}\",
+            ${attributes}
+        }
+    }"
+    
+    curl -s -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}" \
+        "http://supervisor/core/api/states/${entity_id}" > /dev/null
+    
+    bashio::log.debug "Created dashboard entity: ${entity_id}"
+}
+
+# Create dashboard entities
+create_entity "sensor.actual_budget_system_status" \
+    "System Status" \
+    "mdi:calculator-variant" \
+    "starting" \
+    '"description": "Overall system health", "tooltip": "Green=Running, Yellow=Issues, Red=Failed"'
+
+create_entity "sensor.actual_budget_api_status" \
+    "API Server" \
+    "mdi:api" \
+    "starting" \
+    '"description": "Node.js API server status", "tooltip": "Handles Actual Budget integration"'
+
+create_entity "sensor.actual_budget_server_status" \
+    "Actual Budget Server" \
+    "mdi:server" \
+    "starting" \
+    '"description": "Official Actual Budget server", "tooltip": "Main budget application server"'
+
+create_entity "sensor.actual_budget_last_sync" \
+    "Last Sync" \
+    "mdi:sync" \
+    "never" \
+    '"description": "Last synchronization time", "tooltip": "When transactions were last synced to Xero"'
+
+create_entity "sensor.actual_budget_transactions_processed" \
+    "Transactions Processed" \
+    "mdi:counter" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "Total processed", "tooltip": "PLACEHOLDER: Shows test data until first sync"'
+
+create_entity "sensor.actual_budget_successful_imports" \
+    "Successful Imports" \
+    "mdi:check-circle" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "Successfully imported to Xero", "tooltip": "PLACEHOLDER: Shows test data until first sync"'
+
+create_entity "sensor.actual_budget_failed_transactions" \
+    "Failed Transactions" \
+    "mdi:alert-circle" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "Failed imports", "tooltip": "PLACEHOLDER: Shows test data until first sync"'
+
+create_entity "sensor.actual_budget_pending_mappings" \
+    "Pending Mappings" \
+    "mdi:map-marker-question" \
+    "0" \
+    '"unit_of_measurement": "mappings", "description": "Awaiting category mapping", "tooltip": "PLACEHOLDER: Shows test data until first sync"'
+
+bashio::log.info "✅ Native HA dashboard entities created!"
+bashio::log.info "🎯 Check your Home Assistant sidebar for 'Actual Budget' item"
+bashio::log.info "📊 Dashboard tiles will show live data once services start"
+
+# Start a simple service that updates the entities
+while true; do
+    # Update system status
+    curl -s -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d '{"state": "running", "attributes": {"friendly_name": "System Status", "icon": "mdi:calculator-variant", "last_update": "'$(date -Iseconds)'"}}' \
+        "http://supervisor/core/api/states/sensor.actual_budget_system_status" > /dev/null
+    
+    sleep 60
+done

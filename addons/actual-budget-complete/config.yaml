@@ -1,0 +1,110 @@
+name: "Actual Budget Complete"
+version: "2.0.0"
+slug: actual-budget-complete
+description: "Complete Actual Budget system with native Home Assistant dashboard integration"
+url: "https://github.com/Dylzzzzz/actual-budget-system"
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+startup: services
+boot: auto
+init: false
+
+# Native HA Integration - NO webui (creates sidebar item instead)
+panel_icon: mdi:calculator-variant
+panel_title: "Actual Budget"
+panel_admin: false
+
+options:
+  # Service Management
+  manage_api_server: true
+  manage_actual_server: true
+  api_server_port: 3001
+  actual_server_port: 5006
+  
+  # External Service URLs (if not managed by add-on)
+  external_api_url: ""
+  external_actual_url: ""
+  
+  # Actual Budget Configuration
+  actual_budget_password: ""
+  actual_budget_data_dir: "/data/actual-budget"
+  
+  # Business Configuration
+  business_category_group_id: ""
+  business_category_group_name: "Business Expenses"
+  
+  # Xero Configuration
+  xero_client_id: ""
+  xero_client_secret: ""
+  xero_tenant_id: ""
+  
+  # Xano Configuration (optional - for advanced users)
+  xano_api_url: ""
+  xano_api_key: ""
+  xano_rate_limit: 18
+  
+  # Sync Configuration
+  sync_schedule: "0 2 * * 1"
+  sync_days_back: 7
+  batch_size: 10
+  auto_sync_enabled: true
+  
+  # Safety Configuration
+  dry_run_mode: false
+  test_mode: false
+  sync_to_xero: true
+  
+  # Monitoring Configuration
+  health_check_interval: 60
+  auto_restart_services: true
+  notification_level: "info"
+  
+  # Logging Configuration
+  log_level: "info"
+  log_retention_days: 7
+
+schema:
+  manage_api_server: bool
+  manage_actual_server: bool
+  api_server_port: port
+  actual_server_port: port
+  external_api_url: url?
+  external_actual_url: url?
+  actual_budget_password: password?
+  actual_budget_data_dir: str
+  business_category_group_id: str?
+  business_category_group_name: str
+  xero_client_id: str
+  xero_client_secret: password
+  xero_tenant_id: str
+  xano_api_url: url?
+  xano_api_key: password?
+  xano_rate_limit: int(1,60)
+  sync_schedule: str
+  sync_days_back: int(1,90)
+  batch_size: int(1,100)
+  auto_sync_enabled: bool
+  dry_run_mode: bool
+  test_mode: bool
+  sync_to_xero: bool
+  health_check_interval: int(30,300)
+  auto_restart_services: bool
+  notification_level: list(debug|info|warning|error)
+  log_level: list(debug|info|warn|error)
+  log_retention_days: int(1,30)
+
+ports:
+  3001/tcp: 3001
+  5006/tcp: 5006
+
+# Home Assistant Integration
+homeassistant_api: true
+hassio_api: true
+hassio_role: default
+
+# IMPORTANT: No webui property = creates native HA sidebar integration
+# This creates dashboard tiles instead of opening a separate browser tab
