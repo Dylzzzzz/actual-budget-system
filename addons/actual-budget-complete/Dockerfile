@@ -23,25 +23,21 @@ RUN mkdir -p /opt/actual-budget-api \
     && mkdir -p /data/actual-budget \
     && mkdir -p /var/log/actual-budget
 
-# Copy API server files
-COPY ../../api/ /opt/actual-budget-api/
-WORKDIR /opt/actual-budget-api
-RUN npm install --production
-
-# Copy server configuration
-COPY ../../server/ /opt/actual-budget-server/
+# For now, we'll create a simple placeholder structure
+# The add-on will focus on creating HA entities and dashboard integration
+RUN echo '{"name": "actual-budget-api", "version": "2.0.0"}' > /opt/actual-budget-api/package.json \
+    && echo 'console.log("API server placeholder");' > /opt/actual-budget-api/index.js
 
 # Copy add-on files
 COPY rootfs/ /
 
 # Set permissions
 RUN chmod +x /etc/services.d/*/run \
-    && chmod +x /etc/services.d/*/finish \
-    && chmod +x /usr/bin/actual-budget-*
+    && chmod +x /etc/services.d/*/finish
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD /usr/bin/actual-budget-healthcheck || exit 1
+    CMD curl -f http://localhost:3001/health || exit 1
 
 # Labels
 LABEL \
@@ -51,5 +47,5 @@ LABEL \
     io.hass.type="addon" \
     io.hass.version="2.0.0"
 
-# Expose ports
+# Expose ports for future use
 EXPOSE 3001 5006
