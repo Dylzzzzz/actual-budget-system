@@ -9,7 +9,9 @@ RUN apk add --no-cache \
     nodejs \
     npm \
     curl \
-    jq
+    jq \
+    python3 \
+    py3-pip
 
 # Create app directories
 RUN mkdir -p /opt/actual-budget-api \
@@ -37,6 +39,6 @@ LABEL \
     io.hass.description="Complete Actual Budget system with native HA dashboard integration" \
     io.hass.arch="armhf|aarch64|amd64|armv7|i386" \
     io.hass.type="addon" \
-    io.hass.version="2.0.4"
+    io.hass.version="2.0.5"
 
 # NO EXPOSE - we don't need ports for native HA integration

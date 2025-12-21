@@ -136,7 +136,7 @@ bashio::log.info "📊 Dashboard tiles created with placeholder data"
 # Start web server for ingress panel
 bashio::log.info "🌐 Starting web server for dashboard panel..."
 cd /opt/dashboard
-python3 -m http.server 8099 &
+node server.js &
 WEB_SERVER_PID=$!
 bashio::log.info "✅ Web server started on port 8099 (PID: ${WEB_SERVER_PID})"
 
