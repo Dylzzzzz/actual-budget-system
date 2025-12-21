@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Actual Budget Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #2196F3;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .icon {
+            font-size: 1.2em;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #2196F3;
+        }
+        .card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .status.online { color: #4CAF50; }
+        .status.offline { color: #f44336; }
+        .status.checking { color: #FF9800; }
+        .status.not_configured { color: #9E9E9E; }
+        .description {
+            color: #666;
+            font-size: 0.9em;
+            margin: 5px 0;
+        }
+        .last-check {
+            color: #999;
+            font-size: 0.8em;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2196F3;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .placeholder-note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #856404;
+        }
+        .refresh-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .refresh-btn:hover {
+            background: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <span class="icon">🧮</span>
+            Actual Budget Dashboard
+        </h1>
+        <p>Native Home Assistant Integration</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- System Status Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">⚙️</span>
+                System Status
+            </h3>
+            <div class="status" id="system-status">Loading...</div>
+            <div class="description" id="system-description">Checking system health...</div>
+            <div class="last-check" id="system-last-check"></div>
+            <button class="refresh-btn" onclick="refreshData()">Refresh Status</button>
+        </div>
+
+        <!-- API Server Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">🔌</span>
+                API Server
+            </h3>
+            <div class="status" id="api-status">Loading...</div>
+            <div class="description" id="api-description">Checking API server connection...</div>
+            <div class="last-check" id="api-last-check"></div>
+        </div>
+
+        <!-- Actual Budget Server Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">🖥️</span>
+                Actual Budget Server
+            </h3>
+            <div class="status" id="server-status">Loading...</div>
+            <div class="description" id="server-description">Checking server connection...</div>
+            <div class="last-check" id="server-last-check"></div>
+        </div>
+
+        <!-- Last Sync Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">🔄</span>
+                Last Sync
+            </h3>
+            <div class="status" id="sync-status">Loading...</div>
+            <div class="description">Last synchronization with Xero</div>
+        </div>
+    </div>
+
+    <!-- Statistics Section -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="transactions-processed">0</div>
+            <div class="stat-label">Transactions Processed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="successful-imports">0</div>
+            <div class="stat-label">Successful Imports</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="failed-transactions">0</div>
+            <div class="stat-label">Failed Transactions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="pending-mappings">0</div>
+            <div class="stat-label">Pending Mappings</div>
+        </div>
+    </div>
+
+    <div class="placeholder-note">
+        🔸 <strong>Note:</strong> Statistics show placeholder data until connected to your API server. 
+        Configure the external service URLs in the add-on settings to see real data.
+    </div>
+
+    <script>
+        async function fetchEntityState(entityId) {
+            try {
+                const response = await fetch(`/core/api/states/${entityId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${window.parent.hassTokens?.access_token || ''}`
+                    }
+                });
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (error) {
+                console.error('Error fetching entity:', entityId, error);
+            }
+            return null;
+        }
+
+        async function refreshData() {
+            // Update system status
+            const systemStatus = await fetchEntityState('sensor.actual_budget_system_status');
+            if (systemStatus) {
+                document.getElementById('system-status').textContent = systemStatus.state;
+                document.getElementById('system-status').className = `status ${systemStatus.state}`;
+                document.getElementById('system-description').textContent = systemStatus.attributes.description || '';
+                document.getElementById('system-last-check').textContent = 
+                    systemStatus.attributes.last_update ? `Last update: ${new Date(systemStatus.attributes.last_update).toLocaleString()}` : '';
+            }
+
+            // Update API status
+            const apiStatus = await fetchEntityState('sensor.actual_budget_api_status');
+            if (apiStatus) {
+                document.getElementById('api-status').textContent = apiStatus.state;
+                document.getElementById('api-status').className = `status ${apiStatus.state}`;
+                document.getElementById('api-description').textContent = apiStatus.attributes.description || '';
+                document.getElementById('api-last-check').textContent = 
+                    apiStatus.attributes.last_check ? `Last check: ${new Date(apiStatus.attributes.last_check).toLocaleString()}` : '';
+            }
+
+            // Update server status
+            const serverStatus = await fetchEntityState('sensor.actual_budget_server_status');
+            if (serverStatus) {
+                document.getElementById('server-status').textContent = serverStatus.state;
+                document.getElementById('server-status').className = `status ${serverStatus.state}`;
+                document.getElementById('server-description').textContent = serverStatus.attributes.description || '';
+                document.getElementById('server-last-check').textContent = 
+                    serverStatus.attributes.last_check ? `Last check: ${new Date(serverStatus.attributes.last_check).toLocaleString()}` : '';
+            }
+
+            // Update sync status
+            const syncStatus = await fetchEntityState('sensor.actual_budget_last_sync');
+            if (syncStatus) {
+                document.getElementById('sync-status').textContent = syncStatus.state;
+                document.getElementById('sync-status').className = `status ${syncStatus.state === 'never' ? 'not_configured' : 'online'}`;
+            }
+
+            // Update statistics
+            const stats = [
+                { id: 'transactions-processed', entity: 'sensor.actual_budget_transactions_processed' },
+                { id: 'successful-imports', entity: 'sensor.actual_budget_successful_imports' },
+                { id: 'failed-transactions', entity: 'sensor.actual_budget_failed_transactions' },
+                { id: 'pending-mappings', entity: 'sensor.actual_budget_pending_mappings' }
+            ];
+
+            for (const stat of stats) {
+                const entity = await fetchEntityState(stat.entity);
+                if (entity) {
+                    document.getElementById(stat.id).textContent = entity.state;
+                }
+            }
+        }
+
+        // Initial load
+        refreshData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshData, 30000);
+    </script>
+</body>
+</html>

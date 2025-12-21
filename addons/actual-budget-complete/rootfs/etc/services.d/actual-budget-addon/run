@@ -4,8 +4,12 @@
 # Creates dashboard tiles and entities for Home Assistant
 # ==============================================================================
 
-# Enable error handling but don't exit on errors
+# Enable error handling and verbose logging
 set +e
+set -x
+
+# Log script start
+bashio::log.info "🚀 Script starting with PID: $$"
 
 # Wait for Home Assistant API to be available
 bashio::log.info "🏠 Starting Actual Budget native Home Assistant integration..."
@@ -129,6 +133,13 @@ bashio::log.info "🎉 Native HA dashboard integration complete!"
 bashio::log.info "📱 Look for 'Actual Budget' in your Home Assistant sidebar"
 bashio::log.info "📊 Dashboard tiles created with placeholder data"
 
+# Start web server for ingress panel
+bashio::log.info "🌐 Starting web server for dashboard panel..."
+cd /opt/dashboard
+python3 -m http.server 8099 &
+WEB_SERVER_PID=$!
+bashio::log.info "✅ Web server started on port 8099 (PID: ${WEB_SERVER_PID})"
+
 # Show configuration info
 if [[ -n "${EXTERNAL_API_URL}" ]]; then
     bashio::log.info "🔗 API Server URL: ${EXTERNAL_API_URL}"
@@ -177,6 +188,10 @@ check_service_health() {
 # Cleanup function for graceful shutdown
 cleanup() {
     bashio::log.info "🛑 Received shutdown signal, cleaning up..."
+    if [[ -n "${WEB_SERVER_PID}" ]]; then
+        kill ${WEB_SERVER_PID} 2>/dev/null || true
+        bashio::log.info "🌐 Web server stopped"
+    fi
     exit 0
 }
 
