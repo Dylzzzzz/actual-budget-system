@@ -4,30 +4,41 @@
 # Creates dashboard tiles and entities for Home Assistant
 # ==============================================================================
 
+# Enable error handling but don't exit on errors
+set +e
+
 # Wait for Home Assistant API to be available
 bashio::log.info "🏠 Starting Actual Budget native Home Assistant integration..."
 bashio::log.info "⏳ Waiting for Home Assistant API..."
 
-# Wait for supervisor token
-while [[ -z "${SUPERVISOR_TOKEN}" ]]; do
+# Wait for supervisor token with timeout
+timeout=60
+counter=0
+while [[ -z "${SUPERVISOR_TOKEN}" && $counter -lt $timeout ]]; do
     sleep 1
+    ((counter++))
 done
+
+if [[ -z "${SUPERVISOR_TOKEN}" ]]; then
+    bashio::log.error "❌ Failed to get supervisor token after ${timeout} seconds"
+    exit 1
+fi
 
 bashio::log.info "✅ Home Assistant API ready"
 
-# Parse configuration
-EXTERNAL_API_URL=$(bashio::config 'external_api_url')
-EXTERNAL_ACTUAL_URL=$(bashio::config 'external_actual_url')
-API_SERVER_PORT=$(bashio::config 'api_server_port')
-ACTUAL_SERVER_PORT=$(bashio::config 'actual_server_port')
-LOG_LEVEL=$(bashio::config 'log_level')
+# Parse configuration with defaults
+EXTERNAL_API_URL=$(bashio::config 'external_api_url' '')
+EXTERNAL_ACTUAL_URL=$(bashio::config 'external_actual_url' '')
+API_SERVER_PORT=$(bashio::config 'api_server_port' '3001')
+ACTUAL_SERVER_PORT=$(bashio::config 'actual_server_port' '5006')
+LOG_LEVEL=$(bashio::config 'log_level' 'info')
 
 # Set log level
 bashio::log.level "${LOG_LEVEL}"
 
 bashio::log.info "📊 Creating native Home Assistant dashboard entities..."
 
-# Function to create entity
+# Function to create entity with error handling
 create_entity() {
     local entity_id="$1"
     local name="$2"
@@ -44,16 +55,20 @@ create_entity() {
         }
     }"
     
-    curl -s -X POST \
+    local response
+    response=$(curl -s -w "%{http_code}" -X POST \
         -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         -H "Content-Type: application/json" \
         -d "${payload}" \
-        "http://supervisor/core/api/states/${entity_id}" > /dev/null 2>&1
+        "http://supervisor/core/api/states/${entity_id}" 2>/dev/null)
     
-    if [[ $? -eq 0 ]]; then
+    local http_code="${response: -3}"
+    if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
         bashio::log.debug "✅ Created entity: ${entity_id}"
+        return 0
     else
-        bashio::log.warning "⚠️ Failed to create entity: ${entity_id}"
+        bashio::log.warning "⚠️ Failed to create entity: ${entity_id} (HTTP: ${http_code})"
+        return 1
     fi
 }
 
@@ -127,7 +142,22 @@ else
     bashio::log.info "⚠️ No Actual Budget URL configured - configure external_actual_url"
 fi
 
-# Function to check service health
+# Function to update entity state with error handling
+update_entity_state() {
+    local entity_id="$1"
+    local state="$2"
+    local attributes="$3"
+    
+    local payload="{\"state\": \"${state}\", \"attributes\": ${attributes}}"
+    
+    curl -s -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}" \
+        "http://supervisor/core/api/states/${entity_id}" > /dev/null 2>&1
+}
+
+# Function to check service health with timeout
 check_service_health() {
     local service_name="$1"
     local url="$2"
@@ -136,69 +166,78 @@ check_service_health() {
         return 1
     fi
     
-    # Try to connect to the service
-    if curl -s -f "${url}/health" > /dev/null 2>&1 || curl -s -f "${url}" > /dev/null 2>&1; then
+    # Try to connect to the service with timeout
+    if timeout 10 curl -s -f "${url}/health" > /dev/null 2>&1 || timeout 10 curl -s -f "${url}" > /dev/null 2>&1; then
         return 0
     else
         return 1
     fi
 }
 
+# Cleanup function for graceful shutdown
+cleanup() {
+    bashio::log.info "🛑 Received shutdown signal, cleaning up..."
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
+
 # Main service loop - keep the add-on running and update entities periodically
 bashio::log.info "🔄 Starting monitoring loop..."
+bashio::log.info "💡 Add-on will run continuously and update dashboard every 2 minutes"
+
+# Initialize loop counter
+loop_count=0
 
 while true; do
+    ((loop_count++))
+    bashio::log.debug "🔄 Health check cycle ${loop_count}"
+    
     # Check API server health
     if [[ -n "${EXTERNAL_API_URL}" ]]; then
         if check_service_health "API Server" "${EXTERNAL_API_URL}"; then
-            curl -s -X POST \
-                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-                -H "Content-Type: application/json" \
-                -d '{"state": "online", "attributes": {"friendly_name": "API Server", "icon": "mdi:api", "description": "Connected and responding", "last_check": "'$(date -Iseconds)'"}}' \
-                "http://supervisor/core/api/states/sensor.actual_budget_api_status" > /dev/null 2>&1
+            update_entity_state "sensor.actual_budget_api_status" "online" \
+                '{"friendly_name": "API Server", "icon": "mdi:api", "description": "Connected and responding", "last_check": "'$(date -Iseconds)'"}'
+            bashio::log.debug "✅ API Server: online"
         else
-            curl -s -X POST \
-                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-                -H "Content-Type: application/json" \
-                -d '{"state": "offline", "attributes": {"friendly_name": "API Server", "icon": "mdi:api-off", "description": "Cannot connect to API server", "last_check": "'$(date -Iseconds)'"}}' \
-                "http://supervisor/core/api/states/sensor.actual_budget_api_status" > /dev/null 2>&1
+            update_entity_state "sensor.actual_budget_api_status" "offline" \
+                '{"friendly_name": "API Server", "icon": "mdi:api-off", "description": "Cannot connect to API server", "last_check": "'$(date -Iseconds)'"}'
+            bashio::log.debug "❌ API Server: offline"
         fi
+    else
+        update_entity_state "sensor.actual_budget_api_status" "not_configured" \
+            '{"friendly_name": "API Server", "icon": "mdi:api-off", "description": "No external API URL configured", "last_check": "'$(date -Iseconds)'"}'
     fi
     
     # Check Actual Budget server health
     if [[ -n "${EXTERNAL_ACTUAL_URL}" ]]; then
         if check_service_health "Actual Budget Server" "${EXTERNAL_ACTUAL_URL}"; then
-            curl -s -X POST \
-                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-                -H "Content-Type: application/json" \
-                -d '{"state": "online", "attributes": {"friendly_name": "Actual Budget Server", "icon": "mdi:server", "description": "Connected and responding", "last_check": "'$(date -Iseconds)'"}}' \
-                "http://supervisor/core/api/states/sensor.actual_budget_server_status" > /dev/null 2>&1
+            update_entity_state "sensor.actual_budget_server_status" "online" \
+                '{"friendly_name": "Actual Budget Server", "icon": "mdi:server", "description": "Connected and responding", "last_check": "'$(date -Iseconds)'"}'
+            bashio::log.debug "✅ Actual Budget Server: online"
         else
-            curl -s -X POST \
-                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-                -H "Content-Type: application/json" \
-                -d '{"state": "offline", "attributes": {"friendly_name": "Actual Budget Server", "icon": "mdi:server-off", "description": "Cannot connect to Actual Budget server", "last_check": "'$(date -Iseconds)'"}}' \
-                "http://supervisor/core/api/states/sensor.actual_budget_server_status" > /dev/null 2>&1
+            update_entity_state "sensor.actual_budget_server_status" "offline" \
+                '{"friendly_name": "Actual Budget Server", "icon": "mdi:server-off", "description": "Cannot connect to Actual Budget server", "last_check": "'$(date -Iseconds)'"}'
+            bashio::log.debug "❌ Actual Budget Server: offline"
         fi
+    else
+        update_entity_state "sensor.actual_budget_server_status" "not_configured" \
+            '{"friendly_name": "Actual Budget Server", "icon": "mdi:server-off", "description": "No external Actual Budget URL configured", "last_check": "'$(date -Iseconds)'"}'
     fi
     
     # Update system status with current timestamp
-    curl -s -X POST \
-        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"state\": \"running\",
-            \"attributes\": {
-                \"friendly_name\": \"System Status\",
-                \"icon\": \"mdi:calculator-variant\",
-                \"description\": \"Native HA integration active\",
-                \"last_update\": \"$(date -Iseconds)\",
-                \"version\": \"2.0.1\",
-                \"integration_type\": \"native_dashboard\"
-            }
-        }" \
-        "http://supervisor/core/api/states/sensor.actual_budget_system_status" > /dev/null 2>&1
+    update_entity_state "sensor.actual_budget_system_status" "running" \
+        '{"friendly_name": "System Status", "icon": "mdi:calculator-variant", "description": "Native HA integration active", "last_update": "'$(date -Iseconds)'", "version": "2.0.1", "integration_type": "native_dashboard", "loop_count": '${loop_count}'}'
+    
+    # Log status every 10 cycles (20 minutes)
+    if (( loop_count % 10 == 0 )); then
+        bashio::log.info "💓 Add-on running healthy - completed ${loop_count} health check cycles"
+    fi
     
     # Sleep for 2 minutes before next health check
-    sleep 120
+    # Use a loop to allow for signal handling during sleep
+    for i in {1..120}; do
+        sleep 1
+    done
 done
