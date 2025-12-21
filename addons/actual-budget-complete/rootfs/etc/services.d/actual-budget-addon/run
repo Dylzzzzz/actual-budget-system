@@ -16,8 +16,8 @@ done
 bashio::log.info "✅ Home Assistant API ready"
 
 # Parse configuration
-MANAGE_API_SERVER=$(bashio::config 'manage_api_server')
-MANAGE_ACTUAL_SERVER=$(bashio::config 'manage_actual_server')
+EXTERNAL_API_URL=$(bashio::config 'external_api_url')
+EXTERNAL_ACTUAL_URL=$(bashio::config 'external_actual_url')
 API_SERVER_PORT=$(bashio::config 'api_server_port')
 ACTUAL_SERVER_PORT=$(bashio::config 'actual_server_port')
 LOG_LEVEL=$(bashio::config 'log_level')
@@ -64,19 +64,19 @@ create_entity "sensor.actual_budget_system_status" \
     "System Status" \
     "mdi:calculator-variant" \
     "running" \
-    '"description": "Overall system health", "tooltip": "Green=Running, Yellow=Issues, Red=Failed", "version": "2.0.0"'
+    '"description": "Overall system health", "tooltip": "Green=Running, Yellow=Issues, Red=Failed", "version": "2.0.1"'
 
 create_entity "sensor.actual_budget_api_status" \
     "API Server" \
     "mdi:api" \
-    "external" \
-    '"description": "Node.js API server status", "tooltip": "Connect to your existing API server or let add-on manage it", "managed": false'
+    "checking" \
+    '"description": "Node.js API server status", "tooltip": "Connect to your existing API server", "external_url": "'${EXTERNAL_API_URL}'"'
 
 create_entity "sensor.actual_budget_server_status" \
     "Actual Budget Server" \
     "mdi:server" \
-    "external" \
-    '"description": "Official Actual Budget server", "tooltip": "Connect to your existing server or let add-on manage it", "managed": false'
+    "checking" \
+    '"description": "Official Actual Budget server", "tooltip": "Connect to your existing server", "external_url": "'${EXTERNAL_ACTUAL_URL}'"'
 
 create_entity "sensor.actual_budget_last_sync" \
     "Last Sync" \
@@ -90,33 +90,98 @@ create_entity "sensor.actual_budget_transactions_processed" \
     "Transactions Processed" \
     "mdi:counter" \
     "0" \
-    '"unit_of_measurement": "transactions", "description": "Total processed", "tooltip": "🔸 PLACEHOLDER: Shows test data until first sync completes"'
+    '"unit_of_measurement": "transactions", "description": "Total processed", "tooltip": "🔸 PLACEHOLDER: Shows test data until connected to API server"'
 
 create_entity "sensor.actual_budget_successful_imports" \
     "Successful Imports" \
     "mdi:check-circle" \
     "0" \
-    '"unit_of_measurement": "transactions", "description": "Successfully imported to Xero", "tooltip": "🔸 PLACEHOLDER: Shows test data until first sync completes"'
+    '"unit_of_measurement": "transactions", "description": "Successfully imported to Xero", "tooltip": "🔸 PLACEHOLDER: Shows test data until connected to API server"'
 
 create_entity "sensor.actual_budget_failed_transactions" \
     "Failed Transactions" \
     "mdi:alert-circle" \
     "0" \
-    '"unit_of_measurement": "transactions", "description": "Failed imports", "tooltip": "🔸 PLACEHOLDER: Shows test data until first sync completes"'
+    '"unit_of_measurement": "transactions", "description": "Failed imports", "tooltip": "🔸 PLACEHOLDER: Shows test data until connected to API server"'
 
 create_entity "sensor.actual_budget_pending_mappings" \
     "Pending Mappings" \
     "mdi:map-marker-question" \
     "0" \
-    '"unit_of_measurement": "mappings", "description": "Awaiting category mapping", "tooltip": "🔸 PLACEHOLDER: Shows test data until first sync completes"'
+    '"unit_of_measurement": "mappings", "description": "Awaiting category mapping", "tooltip": "🔸 PLACEHOLDER: Shows test data until connected to API server"'
 
 bashio::log.info "🎉 Native HA dashboard integration complete!"
 bashio::log.info "📱 Look for 'Actual Budget' in your Home Assistant sidebar"
 bashio::log.info "📊 Dashboard tiles created with placeholder data"
-bashio::log.info "💡 Configure external service URLs to connect to your existing servers"
+
+# Show configuration info
+if [[ -n "${EXTERNAL_API_URL}" ]]; then
+    bashio::log.info "🔗 API Server URL: ${EXTERNAL_API_URL}"
+else
+    bashio::log.info "⚠️ No API server URL configured - configure external_api_url"
+fi
+
+if [[ -n "${EXTERNAL_ACTUAL_URL}" ]]; then
+    bashio::log.info "🔗 Actual Budget URL: ${EXTERNAL_ACTUAL_URL}"
+else
+    bashio::log.info "⚠️ No Actual Budget URL configured - configure external_actual_url"
+fi
+
+# Function to check service health
+check_service_health() {
+    local service_name="$1"
+    local url="$2"
+    
+    if [[ -z "${url}" ]]; then
+        return 1
+    fi
+    
+    # Try to connect to the service
+    if curl -s -f "${url}/health" > /dev/null 2>&1 || curl -s -f "${url}" > /dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
 
 # Main service loop - keep the add-on running and update entities periodically
+bashio::log.info "🔄 Starting monitoring loop..."
+
 while true; do
+    # Check API server health
+    if [[ -n "${EXTERNAL_API_URL}" ]]; then
+        if check_service_health "API Server" "${EXTERNAL_API_URL}"; then
+            curl -s -X POST \
+                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"state": "online", "attributes": {"friendly_name": "API Server", "icon": "mdi:api", "description": "Connected and responding", "last_check": "'$(date -Iseconds)'"}}' \
+                "http://supervisor/core/api/states/sensor.actual_budget_api_status" > /dev/null 2>&1
+        else
+            curl -s -X POST \
+                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"state": "offline", "attributes": {"friendly_name": "API Server", "icon": "mdi:api-off", "description": "Cannot connect to API server", "last_check": "'$(date -Iseconds)'"}}' \
+                "http://supervisor/core/api/states/sensor.actual_budget_api_status" > /dev/null 2>&1
+        fi
+    fi
+    
+    # Check Actual Budget server health
+    if [[ -n "${EXTERNAL_ACTUAL_URL}" ]]; then
+        if check_service_health "Actual Budget Server" "${EXTERNAL_ACTUAL_URL}"; then
+            curl -s -X POST \
+                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"state": "online", "attributes": {"friendly_name": "Actual Budget Server", "icon": "mdi:server", "description": "Connected and responding", "last_check": "'$(date -Iseconds)'"}}' \
+                "http://supervisor/core/api/states/sensor.actual_budget_server_status" > /dev/null 2>&1
+        else
+            curl -s -X POST \
+                -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"state": "offline", "attributes": {"friendly_name": "Actual Budget Server", "icon": "mdi:server-off", "description": "Cannot connect to Actual Budget server", "last_check": "'$(date -Iseconds)'"}}' \
+                "http://supervisor/core/api/states/sensor.actual_budget_server_status" > /dev/null 2>&1
+        fi
+    fi
+    
     # Update system status with current timestamp
     curl -s -X POST \
         -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
@@ -128,12 +193,12 @@ while true; do
                 \"icon\": \"mdi:calculator-variant\",
                 \"description\": \"Native HA integration active\",
                 \"last_update\": \"$(date -Iseconds)\",
-                \"version\": \"2.0.0\",
+                \"version\": \"2.0.1\",
                 \"integration_type\": \"native_dashboard\"
             }
         }" \
         "http://supervisor/core/api/states/sensor.actual_budget_system_status" > /dev/null 2>&1
     
-    # Sleep for 5 minutes before next update
-    sleep 300
+    # Sleep for 2 minutes before next health check
+    sleep 120
 done
