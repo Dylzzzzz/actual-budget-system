@@ -17,7 +17,7 @@ RUN mkdir -p /opt/actual-budget-api \
     && mkdir -p /var/log/actual-budget
 
 # Create placeholder files
-RUN echo '{"name": "actual-budget-api", "version": "2.0.0"}' > /opt/actual-budget-api/package.json \
+RUN echo '{"name": "actual-budget-api", "version": "2.0.1"}' > /opt/actual-budget-api/package.json \
     && echo 'console.log("API server placeholder");' > /opt/actual-budget-api/index.js
 
 # Copy add-on files
@@ -37,7 +37,6 @@ LABEL \
     io.hass.description="Complete Actual Budget system with native HA dashboard integration" \
     io.hass.arch="armhf|aarch64|amd64|armv7|i386" \
     io.hass.type="addon" \
-    io.hass.version="2.0.0"
+    io.hass.version="2.0.1"
 
-# Expose ports for future use
-EXPOSE 3001 5006
+# NO EXPOSE - we don't need ports for native HA integration

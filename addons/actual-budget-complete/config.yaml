@@ -1,5 +1,5 @@
 name: "Actual Budget Complete"
-version: "2.0.0"
+version: "2.0.1"
 slug: actual-budget-complete
 description: "Complete Actual Budget system with native Home Assistant dashboard integration"
 url: "https://github.com/Dylzzzzz/actual-budget-system"
@@ -97,9 +97,7 @@ schema:
   log_level: list(debug|info|warn|error)
   log_retention_days: int(1,30)
 
-ports:
-  3001/tcp: 3001
-  5006/tcp: 5006
+# NO ports section - we don't need to expose ports for native HA integration
 
 # Home Assistant Integration
 homeassistant_api: true
