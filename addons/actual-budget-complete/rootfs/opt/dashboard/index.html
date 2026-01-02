@@ -193,11 +193,7 @@
     <script>
         async function fetchEntityState(entityId) {
             try {
-                const response = await fetch(`/core/api/states/${entityId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${window.parent.hassTokens?.access_token || ''}`
-                    }
-                });
+                const response = await fetch(`/api/entity?id=${entityId}`);
                 if (response.ok) {
                     return await response.json();
                 }
