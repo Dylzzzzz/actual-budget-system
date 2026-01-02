@@ -49,8 +49,10 @@ function fetchEntityState(entityId, token) {
 const server = http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
     
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    
     // API endpoint to get entity states
-    if (parsedUrl.pathname === '/api/entity' && parsedUrl.query.id) {
+    if (parsedUrl.pathname === '/dashboard-api/entity' && parsedUrl.query.id) {
         const entityId = parsedUrl.query.id;
         const token = process.env.SUPERVISOR_TOKEN;
         

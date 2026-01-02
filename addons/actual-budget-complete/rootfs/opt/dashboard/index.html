@@ -198,9 +198,9 @@
         async function fetchEntityState(entityId) {
             // Try multiple URL patterns to find the working one
             const urlsToTry = [
-                `./api/entity?id=${entityId}`,
-                `/api/entity?id=${entityId}`,
-                `api/entity?id=${entityId}`
+                `./dashboard-api/entity?id=${entityId}`,
+                `/dashboard-api/entity?id=${entityId}`,
+                `dashboard-api/entity?id=${entityId}`
             ];
             
             for (const url of urlsToTry) {
@@ -290,9 +290,9 @@
         document.getElementById('base-url').textContent = window.location.origin + window.location.pathname;
         console.log('Dashboard loaded at:', window.location.href);
         console.log('Will try API calls to these URLs:', [
-            `./api/entity?id=test`,
-            `/api/entity?id=test`,
-            `api/entity?id=test`
+            `./dashboard-api/entity?id=test`,
+            `/dashboard-api/entity?id=test`,
+            `dashboard-api/entity?id=test`
         ]);
         
         refreshData();
