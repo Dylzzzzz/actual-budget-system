@@ -39,6 +39,6 @@ LABEL \
     io.hass.description="Complete Actual Budget system with native HA dashboard integration" \
     io.hass.arch="armhf|aarch64|amd64|armv7|i386" \
     io.hass.type="addon" \
-    io.hass.version="2.0.8"
+    io.hass.version="2.0.9"
 
 # NO EXPOSE - we don't need ports for native HA integration
