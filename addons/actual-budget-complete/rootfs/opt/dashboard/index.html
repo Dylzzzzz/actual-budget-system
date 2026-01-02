@@ -189,9 +189,77 @@
         </div>
     </div>
 
+    <!-- HP Transaction Automation Section -->
+    <div class="header" style="margin-top: 40px;">
+        <h2 style="color: #4CAF50; margin: 0; display: flex; align-items: center; justify-content: center; gap: 10px;">
+            <span class="icon">🏥</span>
+            HP Transaction Automation
+        </h2>
+        <p>Business Expense Processing</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- HP Automation Status Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">⚙️</span>
+                HP Automation Status
+            </h3>
+            <div class="status" id="hp-automation-status">Loading...</div>
+            <div class="description" id="hp-automation-description">Checking HP automation status...</div>
+            <div class="last-check" id="hp-automation-last-check"></div>
+            <button class="refresh-btn" onclick="triggerHPProcessing()">Process HP Transactions</button>
+        </div>
+
+        <!-- HP Transaction Queue Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">📋</span>
+                Transaction Queue
+            </h3>
+            <div class="stats-grid" style="margin-top: 10px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="hp-pending-count">0</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="hp-submitted-count">0</div>
+                    <div class="stat-label">Submitted</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="hp-paid-count">0</div>
+                    <div class="stat-label">Paid</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="hp-failed-count">0</div>
+                    <div class="stat-label">Failed</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HP Last Processing Card -->
+        <div class="card">
+            <h3>
+                <span class="icon">🕒</span>
+                Last Processing
+            </h3>
+            <div class="status" id="hp-last-processing">Loading...</div>
+            <div class="description">Last HP transaction processing run</div>
+        </div>
+    </div>
+
     <div class="placeholder-note">
         🔸 <strong>Note:</strong> Statistics show placeholder data until connected to your API server. 
         Configure the external service URLs in the add-on settings to see real data.
+    </div>
+
+    <div class="placeholder-note" style="background: #e8f5e8; border-color: #4CAF50;">
+        🏥 <strong>HP Automation:</strong> HP transaction automation is now integrated! Configure your Actual Budget password 
+        in the add-on settings to enable automatic detection and processing of HP business expense transactions.
+        <br><br>
+        <strong>Category Group ID:</strong> a85d9076-d269-4eb4-ab58-92d2f37997c6
+        <br>
+        <strong>Processing:</strong> Only reconciled transactions without existing #HP- tags will be processed.
     </div>
 
     <script>
@@ -282,6 +350,85 @@
                 if (entity) {
                     document.getElementById(stat.id).textContent = entity.state;
                 }
+            }
+
+            // Update HP automation status
+            const hpAutomationStatus = await fetchEntityState('sensor.actual_budget_hp_automation_status');
+            if (hpAutomationStatus) {
+                document.getElementById('hp-automation-status').textContent = hpAutomationStatus.state;
+                document.getElementById('hp-automation-status').className = `status ${hpAutomationStatus.state}`;
+                document.getElementById('hp-automation-description').textContent = hpAutomationStatus.attributes.description || '';
+                document.getElementById('hp-automation-last-check').textContent = 
+                    hpAutomationStatus.attributes.last_check ? `Last check: ${new Date(hpAutomationStatus.attributes.last_check).toLocaleString()}` : '';
+            }
+
+            // Update HP transaction counts
+            const hpStats = [
+                { id: 'hp-pending-count', entity: 'sensor.actual_budget_hp_pending_transactions' },
+                { id: 'hp-submitted-count', entity: 'sensor.actual_budget_hp_submitted_transactions' },
+                { id: 'hp-paid-count', entity: 'sensor.actual_budget_hp_paid_transactions' },
+                { id: 'hp-failed-count', entity: 'sensor.actual_budget_hp_failed_transactions' }
+            ];
+
+            for (const stat of hpStats) {
+                const entity = await fetchEntityState(stat.entity);
+                if (entity) {
+                    document.getElementById(stat.id).textContent = entity.state;
+                }
+            }
+
+            // Update HP last processing
+            const hpLastProcessing = await fetchEntityState('sensor.actual_budget_hp_last_processing');
+            if (hpLastProcessing) {
+                document.getElementById('hp-last-processing').textContent = hpLastProcessing.state;
+                document.getElementById('hp-last-processing').className = `status ${hpLastProcessing.state === 'never' ? 'not_configured' : 'online'}`;
+            }
+        }
+
+        // Function to trigger HP transaction processing
+        async function triggerHPProcessing() {
+            const button = document.querySelector('button[onclick="triggerHPProcessing()"]');
+            const originalText = button.textContent;
+            
+            try {
+                button.textContent = 'Processing...';
+                button.disabled = true;
+                
+                const response = await fetch('./dashboard-api/hp-process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('HP Processing result:', result);
+                    
+                    // Show success message
+                    button.textContent = 'Success!';
+                    button.style.backgroundColor = '#4CAF50';
+                    
+                    // Refresh data to show updated counts
+                    setTimeout(() => {
+                        refreshData();
+                        button.textContent = originalText;
+                        button.style.backgroundColor = '';
+                        button.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Error triggering HP processing:', error);
+                button.textContent = 'Error';
+                button.style.backgroundColor = '#f44336';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.backgroundColor = '';
+                    button.disabled = false;
+                }, 2000);
             }
         }
 

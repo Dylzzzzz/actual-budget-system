@@ -1,5 +1,5 @@
 name: "Actual Budget Complete"
-version: "2.0.9"
+version: "2.1.0"
 slug: actual-budget-complete
 description: "Complete Actual Budget system with native Home Assistant dashboard integration"
 url: "https://github.com/Dylzzzzz/actual-budget-system"
@@ -69,6 +69,16 @@ options:
   # Logging Configuration
   log_level: "info"
   log_retention_days: 7
+  
+  # HP Transaction Automation
+  hp_automation_enabled: true
+  hp_category_group_id: "a85d9076-d269-4eb4-ab58-92d2f37997c6"
+  hp_processing_schedule: "0 */6 * * *"
+  hp_manual_triggers_enabled: true
+  hp_dry_run_mode: false
+  hp_max_transactions_per_batch: 50
+  hp_retry_attempts: 3
+  hp_retry_delay_seconds: 300
 
 schema:
   manage_api_server: bool
@@ -99,6 +109,14 @@ schema:
   notification_level: list(debug|info|warning|error)
   log_level: list(debug|info|warn|error)
   log_retention_days: int(1,30)
+  hp_automation_enabled: bool
+  hp_category_group_id: str
+  hp_processing_schedule: str
+  hp_manual_triggers_enabled: bool
+  hp_dry_run_mode: bool
+  hp_max_transactions_per_batch: int(1,100)
+  hp_retry_attempts: int(1,10)
+  hp_retry_delay_seconds: int(60,3600)
 
 # NO ports section - we don't need to expose ports for native HA integration
 

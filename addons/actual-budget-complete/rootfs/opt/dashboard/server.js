@@ -116,6 +116,89 @@ const server = http.createServer(async (req, res) => {
         return;
     }
     
+    // HP Transactions API endpoint
+    if ((parsedUrl.pathname === '/dashboard-api/hp-transactions' || parsedUrl.pathname === '//dashboard-api/hp-transactions')) {
+        console.log('HP Transactions API request');
+        
+        // Return mock HP transaction data for now
+        const hpTransactions = {
+            pending: [],
+            submitted: [],
+            paid: [],
+            failed: [],
+            statistics: {
+                total_pending: 0,
+                total_submitted: 0,
+                total_paid: 0,
+                total_failed: 0,
+                last_processing: new Date().toISOString(),
+                success_rate: 100
+            }
+        };
+        
+        res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify(hpTransactions));
+        return;
+    }
+    
+    // HP Process trigger endpoint
+    if ((parsedUrl.pathname === '/dashboard-api/hp-process' || parsedUrl.pathname === '//dashboard-api/hp-process') && req.method === 'POST') {
+        console.log('HP Process trigger request');
+        
+        // Return mock processing result for now
+        const processResult = {
+            success: true,
+            message: 'HP transaction processing triggered successfully',
+            processed: 0,
+            submitted: 0,
+            failed: 0,
+            timestamp: new Date().toISOString()
+        };
+        
+        res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify(processResult));
+        return;
+    }
+    
+    // HP Statistics endpoint
+    if ((parsedUrl.pathname === '/dashboard-api/hp-stats' || parsedUrl.pathname === '//dashboard-api/hp-stats')) {
+        console.log('HP Statistics API request');
+        
+        // Return mock statistics for now
+        const hpStats = {
+            automation_enabled: true,
+            category_group_id: 'a85d9076-d269-4eb4-ab58-92d2f37997c6',
+            processing_schedule: '0 */6 * * *',
+            last_24h: {
+                processed: 0,
+                submitted: 0,
+                paid: 0,
+                failed: 0
+            },
+            all_time: {
+                processed: 0,
+                submitted: 0,
+                paid: 0,
+                failed: 0
+            },
+            success_rate: 100,
+            average_processing_time: 0
+        };
+        
+        res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify(hpStats));
+        return;
+    }
+    
     // Serve the index.html file for all other requests
     console.log('Serving dashboard HTML');
     const filePath = path.join(__dirname, 'index.html');

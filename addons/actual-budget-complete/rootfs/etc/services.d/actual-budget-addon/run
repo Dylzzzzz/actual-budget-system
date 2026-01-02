@@ -37,6 +37,13 @@ API_SERVER_PORT=$(bashio::config 'api_server_port' '3001')
 ACTUAL_SERVER_PORT=$(bashio::config 'actual_server_port' '5006')
 LOG_LEVEL=$(bashio::config 'log_level' 'info')
 
+# HP Automation Configuration
+HP_AUTOMATION_ENABLED=$(bashio::config 'hp_automation_enabled' 'true')
+HP_CATEGORY_GROUP_ID=$(bashio::config 'hp_category_group_id' 'a85d9076-d269-4eb4-ab58-92d2f37997c6')
+HP_DRY_RUN_MODE=$(bashio::config 'hp_dry_run_mode' 'false')
+HP_MAX_BATCH_SIZE=$(bashio::config 'hp_max_transactions_per_batch' '50')
+ACTUAL_BUDGET_PASSWORD=$(bashio::config 'actual_budget_password' '')
+
 # Set log level
 bashio::log.level "${LOG_LEVEL}"
 
@@ -129,6 +136,44 @@ create_entity "sensor.actual_budget_pending_mappings" \
     "0" \
     '"unit_of_measurement": "mappings", "description": "Awaiting category mapping", "tooltip": "🔸 PLACEHOLDER: Shows test data until connected to API server"'
 
+bashio::log.info "🏥 Creating HP transaction automation entities..."
+
+create_entity "sensor.actual_budget_hp_automation_status" \
+    "HP Automation Status" \
+    "mdi:medical-bag" \
+    "${HP_AUTOMATION_ENABLED}" \
+    '"description": "HP transaction automation status", "tooltip": "Shows if HP automation is enabled", "category_group_id": "'${HP_CATEGORY_GROUP_ID}'"'
+
+create_entity "sensor.actual_budget_hp_pending_transactions" \
+    "HP Pending Transactions" \
+    "mdi:clipboard-list" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "HP transactions awaiting processing", "tooltip": "Reconciled HP transactions without #HP- tags"'
+
+create_entity "sensor.actual_budget_hp_submitted_transactions" \
+    "HP Submitted Transactions" \
+    "mdi:upload" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "HP transactions submitted to Xano", "tooltip": "Transactions with #HP-Submitted tag"'
+
+create_entity "sensor.actual_budget_hp_paid_transactions" \
+    "HP Paid Transactions" \
+    "mdi:check-circle" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "HP transactions marked as paid", "tooltip": "Transactions with #HP-Paid tag"'
+
+create_entity "sensor.actual_budget_hp_failed_transactions" \
+    "HP Failed Transactions" \
+    "mdi:alert-circle" \
+    "0" \
+    '"unit_of_measurement": "transactions", "description": "HP transactions with processing errors", "tooltip": "Failed HP transactions needing attention"'
+
+create_entity "sensor.actual_budget_hp_last_processing" \
+    "HP Last Processing" \
+    "mdi:clock-outline" \
+    "never" \
+    '"description": "Last HP transaction processing run", "tooltip": "When HP transactions were last processed"'
+
 bashio::log.info "🎉 Native HA dashboard integration complete!"
 bashio::log.info "📱 Look for 'Actual Budget' in your Home Assistant sidebar"
 bashio::log.info "📊 Dashboard tiles created with placeholder data"
@@ -183,6 +228,91 @@ check_service_health() {
     else
         return 1
     fi
+}
+
+# Function to detect HP transactions from Actual Budget
+detect_hp_transactions() {
+    local actual_url="$1"
+    local password="$2"
+    local category_group_id="$3"
+    
+    if [[ -z "${actual_url}" || -z "${password}" ]]; then
+        bashio::log.debug "❌ HP Detection: Missing Actual Budget URL or password"
+        return 1
+    fi
+    
+    bashio::log.debug "🔍 HP Detection: Scanning for HP transactions in category group ${category_group_id}"
+    
+    # This is a placeholder for the actual API call to Actual Budget
+    # In a real implementation, this would:
+    # 1. Connect to Actual Budget API
+    # 2. Get transactions for the HP category group
+    # 3. Filter for reconciled transactions only
+    # 4. Check notes for existing #HP- tags
+    # 5. Return eligible transactions
+    
+    # For now, return mock data to test the infrastructure
+    echo "[]"  # Empty array - no transactions found
+}
+
+# Function to process HP transactions
+process_hp_transactions() {
+    local transactions="$1"
+    local dry_run="$2"
+    
+    if [[ "${dry_run}" == "true" ]]; then
+        bashio::log.info "🧪 HP Processing: DRY RUN MODE - No actual processing"
+        return 0
+    fi
+    
+    # Count transactions to process
+    local transaction_count
+    transaction_count=$(echo "${transactions}" | jq '. | length' 2>/dev/null || echo "0")
+    
+    if [[ "${transaction_count}" -eq 0 ]]; then
+        bashio::log.debug "✅ HP Processing: No eligible transactions found"
+        return 0
+    fi
+    
+    bashio::log.info "🏥 HP Processing: Found ${transaction_count} eligible HP transactions"
+    
+    # This is a placeholder for the actual processing logic
+    # In a real implementation, this would:
+    # 1. Submit transactions to Xano
+    # 2. Update transaction notes with #HP-Submitted
+    # 3. Handle errors and retries
+    # 4. Update statistics
+    
+    return 0
+}
+
+# Function to update HP statistics
+update_hp_statistics() {
+    local pending_count="$1"
+    local submitted_count="$2"
+    local paid_count="$3"
+    local failed_count="$4"
+    local last_processing="$5"
+    
+    # Update HP automation status
+    update_entity_state "sensor.actual_budget_hp_automation_status" "${HP_AUTOMATION_ENABLED}" \
+        '{"friendly_name": "HP Automation Status", "icon": "mdi:medical-bag", "description": "HP automation is '${HP_AUTOMATION_ENABLED}'", "category_group_id": "'${HP_CATEGORY_GROUP_ID}'", "last_check": "'$(date -Iseconds)'"}'
+    
+    # Update transaction counts
+    update_entity_state "sensor.actual_budget_hp_pending_transactions" "${pending_count}" \
+        '{"friendly_name": "HP Pending Transactions", "icon": "mdi:clipboard-list", "description": "Transactions awaiting processing", "unit_of_measurement": "transactions"}'
+    
+    update_entity_state "sensor.actual_budget_hp_submitted_transactions" "${submitted_count}" \
+        '{"friendly_name": "HP Submitted Transactions", "icon": "mdi:upload", "description": "Transactions submitted to Xano", "unit_of_measurement": "transactions"}'
+    
+    update_entity_state "sensor.actual_budget_hp_paid_transactions" "${paid_count}" \
+        '{"friendly_name": "HP Paid Transactions", "icon": "mdi:check-circle", "description": "Transactions marked as paid", "unit_of_measurement": "transactions"}'
+    
+    update_entity_state "sensor.actual_budget_hp_failed_transactions" "${failed_count}" \
+        '{"friendly_name": "HP Failed Transactions", "icon": "mdi:alert-circle", "description": "Transactions with errors", "unit_of_measurement": "transactions"}'
+    
+    update_entity_state "sensor.actual_budget_hp_last_processing" "${last_processing}" \
+        '{"friendly_name": "HP Last Processing", "icon": "mdi:clock-outline", "description": "Last processing run", "last_update": "'$(date -Iseconds)'"}'
 }
 
 # Cleanup function for graceful shutdown
@@ -245,6 +375,28 @@ while true; do
     # Update system status with current timestamp
     update_entity_state "sensor.actual_budget_system_status" "running" \
         '{"friendly_name": "System Status", "icon": "mdi:calculator-variant", "description": "Native HA integration active", "last_update": "'$(date -Iseconds)'", "version": "2.0.2", "integration_type": "native_dashboard", "loop_count": '${loop_count}'}'
+    
+    # HP Transaction Processing (if enabled)
+    if [[ "${HP_AUTOMATION_ENABLED}" == "true" ]]; then
+        bashio::log.debug "🏥 HP Processing: Starting HP transaction detection"
+        
+        # Detect HP transactions
+        hp_transactions=$(detect_hp_transactions "${EXTERNAL_ACTUAL_URL}" "${ACTUAL_BUDGET_PASSWORD}" "${HP_CATEGORY_GROUP_ID}")
+        
+        # Process transactions if any found
+        if [[ -n "${hp_transactions}" ]]; then
+            process_hp_transactions "${hp_transactions}" "${HP_DRY_RUN_MODE}"
+        fi
+        
+        # Update HP statistics (placeholder values for now)
+        update_hp_statistics "0" "0" "0" "0" "$(date -Iseconds)"
+        
+        bashio::log.debug "✅ HP Processing: Completed HP transaction cycle"
+    else
+        bashio::log.debug "⏸️ HP Processing: HP automation disabled"
+        update_entity_state "sensor.actual_budget_hp_automation_status" "disabled" \
+            '{"friendly_name": "HP Automation Status", "icon": "mdi:medical-bag-off", "description": "HP automation is disabled", "last_check": "'$(date -Iseconds)'"}'
+    fi
     
     # Log status every 10 cycles (20 minutes)
     if (( loop_count % 10 == 0 )); then
