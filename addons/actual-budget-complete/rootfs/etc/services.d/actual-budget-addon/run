@@ -238,21 +238,102 @@ detect_hp_transactions() {
     
     if [[ -z "${actual_url}" || -z "${password}" ]]; then
         bashio::log.debug "❌ HP Detection: Missing Actual Budget URL or password"
+        echo "[]"
         return 1
     fi
     
     bashio::log.debug "🔍 HP Detection: Scanning for HP transactions in category group ${category_group_id}"
     
-    # This is a placeholder for the actual API call to Actual Budget
-    # In a real implementation, this would:
-    # 1. Connect to Actual Budget API
-    # 2. Get transactions for the HP category group
-    # 3. Filter for reconciled transactions only
-    # 4. Check notes for existing #HP- tags
-    # 5. Return eligible transactions
+    # Step 1: Get authentication token from Actual Budget
+    local auth_response
+    auth_response=$(curl -s -X POST "${actual_url}/account/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"password\": \"${password}\"}" \
+        --connect-timeout 10 \
+        --max-time 30 2>/dev/null)
     
-    # For now, return mock data to test the infrastructure
-    echo "[]"  # Empty array - no transactions found
+    if [[ $? -ne 0 ]] || [[ -z "${auth_response}" ]]; then
+        bashio::log.warning "⚠️ HP Detection: Failed to connect to Actual Budget API"
+        echo "[]"
+        return 1
+    fi
+    
+    # Extract token from response
+    local token
+    token=$(echo "${auth_response}" | jq -r '.data.token // empty' 2>/dev/null)
+    
+    if [[ -z "${token}" || "${token}" == "null" ]]; then
+        bashio::log.warning "⚠️ HP Detection: Failed to authenticate with Actual Budget"
+        echo "[]"
+        return 1
+    fi
+    
+    bashio::log.debug "✅ HP Detection: Successfully authenticated with Actual Budget"
+    
+    # Step 2: Get all categories to find HP group categories
+    local categories_response
+    categories_response=$(curl -s -X GET "${actual_url}/api/categories" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        --connect-timeout 10 \
+        --max-time 30 2>/dev/null)
+    
+    if [[ $? -ne 0 ]] || [[ -z "${categories_response}" ]]; then
+        bashio::log.warning "⚠️ HP Detection: Failed to fetch categories"
+        echo "[]"
+        return 1
+    fi
+    
+    # Extract HP category IDs
+    local hp_category_ids
+    hp_category_ids=$(echo "${categories_response}" | jq -r --arg group_id "${category_group_id}" \
+        '.data[] | select(.category_group_id == $group_id) | .id' 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    
+    if [[ -z "${hp_category_ids}" ]]; then
+        bashio::log.info "ℹ️ HP Detection: No categories found in HP group ${category_group_id}"
+        echo "[]"
+        return 0
+    fi
+    
+    bashio::log.debug "🏥 HP Detection: Found HP categories: ${hp_category_ids}"
+    
+    # Step 3: Get transactions for HP categories
+    local transactions_response
+    transactions_response=$(curl -s -X GET "${actual_url}/api/transactions" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        --connect-timeout 10 \
+        --max-time 30 2>/dev/null)
+    
+    if [[ $? -ne 0 ]] || [[ -z "${transactions_response}" ]]; then
+        bashio::log.warning "⚠️ HP Detection: Failed to fetch transactions"
+        echo "[]"
+        return 1
+    fi
+    
+    # Step 4: Filter transactions for HP categories, reconciled status, and no HP tags
+    local eligible_transactions
+    eligible_transactions=$(echo "${transactions_response}" | jq --arg hp_cats "${hp_category_ids}" \
+        '[.data[] | select(
+            (.category_id as $cat | $hp_cats | split(",") | index($cat)) and
+            .cleared == true and
+            (.notes // "" | test("#HP-") | not)
+        )]' 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        bashio::log.warning "⚠️ HP Detection: Failed to filter transactions"
+        echo "[]"
+        return 1
+    fi
+    
+    local transaction_count
+    transaction_count=$(echo "${eligible_transactions}" | jq '. | length' 2>/dev/null || echo "0")
+    
+    bashio::log.info "🏥 HP Detection: Found ${transaction_count} eligible HP transactions"
+    
+    # Return the eligible transactions
+    echo "${eligible_transactions}"
+    return 0
 }
 
 # Function to process HP transactions
@@ -288,11 +369,22 @@ process_hp_transactions() {
 
 # Function to update HP statistics
 update_hp_statistics() {
-    local pending_count="$1"
-    local submitted_count="$2"
-    local paid_count="$3"
-    local failed_count="$4"
-    local last_processing="$5"
+    local transactions_json="$1"
+    local last_processing="$2"
+    
+    # Count transactions by status
+    local pending_count=0
+    local submitted_count=0
+    local paid_count=0
+    local failed_count=0
+    
+    if [[ -n "${transactions_json}" && "${transactions_json}" != "[]" ]]; then
+        # Count pending transactions (eligible for processing)
+        pending_count=$(echo "${transactions_json}" | jq '. | length' 2>/dev/null || echo "0")
+        
+        # In Phase 2, we'll also count submitted/paid/failed from transaction notes
+        # For now, these remain 0 until we implement note checking
+    fi
     
     # Update HP automation status
     update_entity_state "sensor.actual_budget_hp_automation_status" "${HP_AUTOMATION_ENABLED}" \
@@ -313,6 +405,13 @@ update_hp_statistics() {
     
     update_entity_state "sensor.actual_budget_hp_last_processing" "${last_processing}" \
         '{"friendly_name": "HP Last Processing", "icon": "mdi:clock-outline", "description": "Last processing run", "last_update": "'$(date -Iseconds)'"}'
+    
+    # Log the results
+    if [[ "${pending_count}" -gt 0 ]]; then
+        bashio::log.info "🏥 HP Statistics: ${pending_count} pending, ${submitted_count} submitted, ${paid_count} paid, ${failed_count} failed"
+    else
+        bashio::log.debug "🏥 HP Statistics: No eligible HP transactions found"
+    fi
 }
 
 # Cleanup function for graceful shutdown
@@ -388,8 +487,8 @@ while true; do
             process_hp_transactions "${hp_transactions}" "${HP_DRY_RUN_MODE}"
         fi
         
-        # Update HP statistics (placeholder values for now)
-        update_hp_statistics "0" "0" "0" "0" "$(date -Iseconds)"
+        # Update HP statistics with real data
+        update_hp_statistics "${hp_transactions}" "$(date -Iseconds)"
         
         bashio::log.debug "✅ HP Processing: Completed HP transaction cycle"
     else
