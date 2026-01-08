@@ -108,6 +108,18 @@
         .refresh-btn:hover {
             background: #1976D2;
         }
+        .placeholder-value {
+            color: #999 !important;
+            font-style: italic !important;
+            background: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            border: 1px dashed #ccc;
+        }
+        .real-value {
+            color: #2196F3 !important;
+            font-style: normal !important;
+        }
     </style>
 </head>
 <body>
@@ -130,8 +142,8 @@
                 <span class="icon">⚙️</span>
                 System Status
             </h3>
-            <div class="status" id="system-status">Loading...</div>
-            <div class="description" id="system-description">Checking system health...</div>
+            <div class="status" id="system-status">{{LOADING_SYSTEM_STATUS}}</div>
+            <div class="description" id="system-description">{{CHECKING_SYSTEM_HEALTH}}</div>
             <div class="last-check" id="system-last-check"></div>
             <button class="refresh-btn" onclick="refreshData()">Refresh Status</button>
         </div>
@@ -142,8 +154,8 @@
                 <span class="icon">🔌</span>
                 API Server
             </h3>
-            <div class="status" id="api-status">Loading...</div>
-            <div class="description" id="api-description">Checking API server connection...</div>
+            <div class="status" id="api-status">{{LOADING_API_STATUS}}</div>
+            <div class="description" id="api-description">{{CHECKING_API_CONNECTION}}</div>
             <div class="last-check" id="api-last-check"></div>
         </div>
 
@@ -153,8 +165,8 @@
                 <span class="icon">🖥️</span>
                 Actual Budget Server
             </h3>
-            <div class="status" id="server-status">Loading...</div>
-            <div class="description" id="server-description">Checking server connection...</div>
+            <div class="status" id="server-status">{{LOADING_SERVER_STATUS}}</div>
+            <div class="description" id="server-description">{{CHECKING_SERVER_CONNECTION}}</div>
             <div class="last-check" id="server-last-check"></div>
         </div>
 
@@ -164,7 +176,7 @@
                 <span class="icon">🔄</span>
                 Last Sync
             </h3>
-            <div class="status" id="sync-status">Loading...</div>
+            <div class="status" id="sync-status">{{LOADING_SYNC_STATUS}}</div>
             <div class="description">Last synchronization with Xero</div>
         </div>
     </div>
@@ -172,19 +184,19 @@
     <!-- Statistics Section -->
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-value" id="transactions-processed">0</div>
+            <div class="stat-value" id="transactions-processed">{{TRANSACTIONS_PROCESSED}}</div>
             <div class="stat-label">Transactions Processed</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value" id="successful-imports">0</div>
+            <div class="stat-value" id="successful-imports">{{SUCCESSFUL_IMPORTS}}</div>
             <div class="stat-label">Successful Imports</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value" id="failed-transactions">0</div>
+            <div class="stat-value" id="failed-transactions">{{FAILED_TRANSACTIONS}}</div>
             <div class="stat-label">Failed Transactions</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value" id="pending-mappings">0</div>
+            <div class="stat-value" id="pending-mappings">{{PENDING_MAPPINGS}}</div>
             <div class="stat-label">Pending Mappings</div>
         </div>
     </div>
@@ -205,8 +217,8 @@
                 <span class="icon">⚙️</span>
                 HP Automation Status
             </h3>
-            <div class="status" id="hp-automation-status">Loading...</div>
-            <div class="description" id="hp-automation-description">Checking HP automation status...</div>
+            <div class="status" id="hp-automation-status">{{LOADING_HP_STATUS}}</div>
+            <div class="description" id="hp-automation-description">{{CHECKING_HP_AUTOMATION}}</div>
             <div class="last-check" id="hp-automation-last-check"></div>
             <button class="refresh-btn" onclick="triggerHPProcessing()">Process HP Transactions</button>
         </div>
@@ -219,19 +231,19 @@
             </h3>
             <div class="stats-grid" style="margin-top: 10px;">
                 <div class="stat-card">
-                    <div class="stat-value" id="hp-pending-count">0</div>
+                    <div class="stat-value" id="hp-pending-count">{{HP_PENDING}}</div>
                     <div class="stat-label">Pending</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" id="hp-submitted-count">0</div>
+                    <div class="stat-value" id="hp-submitted-count">{{HP_SUBMITTED}}</div>
                     <div class="stat-label">Submitted</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" id="hp-paid-count">0</div>
+                    <div class="stat-value" id="hp-paid-count">{{HP_PAID}}</div>
                     <div class="stat-label">Paid</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" id="hp-failed-count">0</div>
+                    <div class="stat-value" id="hp-failed-count">{{HP_FAILED}}</div>
                     <div class="stat-label">Failed</div>
                 </div>
             </div>
@@ -243,14 +255,14 @@
                 <span class="icon">🕒</span>
                 Last Processing
             </h3>
-            <div class="status" id="hp-last-processing">Loading...</div>
+            <div class="status" id="hp-last-processing">{{HP_LAST_PROCESSING}}</div>
             <div class="description">Last HP transaction processing run</div>
         </div>
     </div>
 
     <div class="placeholder-note">
-        🔸 <strong>Note:</strong> Statistics show placeholder data until connected to your API server. 
-        Configure the external service URLs in the add-on settings to see real data.
+        🔸 <strong>PLACEHOLDER DATA WARNING:</strong> Values showing {{MERGE_FIELD}} format are placeholder data until connected to your API server. 
+        Configure the external service URLs in the add-on settings to see real data. Real data will show actual numbers and timestamps.
     </div>
 
     <div class="placeholder-note" style="background: #e8f5e8; border-color: #4CAF50;">
@@ -260,6 +272,8 @@
         <strong>Category Group ID:</strong> a85d9076-d269-4eb4-ab58-92d2f37997c6
         <br>
         <strong>Processing:</strong> Only reconciled transactions without existing #HP- tags will be processed.
+        <br>
+        <strong>Placeholder vs Real:</strong> {{HP_PENDING}} = placeholder, "3" = real data
     </div>
 
     <script>
@@ -303,85 +317,107 @@
             // Update system status
             const systemStatus = await fetchEntityState('sensor.actual_budget_system_status');
             if (systemStatus) {
-                document.getElementById('system-status').textContent = systemStatus.state;
-                document.getElementById('system-status').className = `status ${systemStatus.state}`;
-                document.getElementById('system-description').textContent = systemStatus.attributes.description || '';
-                document.getElementById('system-last-check').textContent = 
-                    systemStatus.attributes.last_update ? `Last update: ${new Date(systemStatus.attributes.last_update).toLocaleString()}` : '';
+                const isPlaceholder = systemStatus.state === 'unavailable';
+                document.getElementById('system-status').textContent = isPlaceholder ? '{{SYSTEM_STATUS}}' : systemStatus.state;
+                document.getElementById('system-status').className = `status ${isPlaceholder ? 'not_configured' : systemStatus.state}`;
+                document.getElementById('system-description').textContent = isPlaceholder ? '{{SYSTEM_DESCRIPTION}}' : (systemStatus.attributes.description || '');
+                document.getElementById('system-last-check').textContent = isPlaceholder ? '{{LAST_UPDATE}}' : 
+                    (systemStatus.attributes.last_update ? `Last update: ${new Date(systemStatus.attributes.last_update).toLocaleString()}` : '');
             }
 
             // Update API status
             const apiStatus = await fetchEntityState('sensor.actual_budget_api_status');
             if (apiStatus) {
-                document.getElementById('api-status').textContent = apiStatus.state;
-                document.getElementById('api-status').className = `status ${apiStatus.state}`;
-                document.getElementById('api-description').textContent = apiStatus.attributes.description || '';
-                document.getElementById('api-last-check').textContent = 
-                    apiStatus.attributes.last_check ? `Last check: ${new Date(apiStatus.attributes.last_check).toLocaleString()}` : '';
+                const isPlaceholder = apiStatus.state === 'unavailable';
+                document.getElementById('api-status').textContent = isPlaceholder ? '{{API_STATUS}}' : apiStatus.state;
+                document.getElementById('api-status').className = `status ${isPlaceholder ? 'not_configured' : apiStatus.state}`;
+                document.getElementById('api-description').textContent = isPlaceholder ? '{{API_DESCRIPTION}}' : (apiStatus.attributes.description || '');
+                document.getElementById('api-last-check').textContent = isPlaceholder ? '{{API_LAST_CHECK}}' : 
+                    (apiStatus.attributes.last_check ? `Last check: ${new Date(apiStatus.attributes.last_check).toLocaleString()}` : '');
             }
 
             // Update server status
             const serverStatus = await fetchEntityState('sensor.actual_budget_server_status');
             if (serverStatus) {
-                document.getElementById('server-status').textContent = serverStatus.state;
-                document.getElementById('server-status').className = `status ${serverStatus.state}`;
-                document.getElementById('server-description').textContent = serverStatus.attributes.description || '';
-                document.getElementById('server-last-check').textContent = 
-                    serverStatus.attributes.last_check ? `Last check: ${new Date(serverStatus.attributes.last_check).toLocaleString()}` : '';
+                const isPlaceholder = serverStatus.state === 'unavailable';
+                document.getElementById('server-status').textContent = isPlaceholder ? '{{SERVER_STATUS}}' : serverStatus.state;
+                document.getElementById('server-status').className = `status ${isPlaceholder ? 'not_configured' : serverStatus.state}`;
+                document.getElementById('server-description').textContent = isPlaceholder ? '{{SERVER_DESCRIPTION}}' : (serverStatus.attributes.description || '');
+                document.getElementById('server-last-check').textContent = isPlaceholder ? '{{SERVER_LAST_CHECK}}' : 
+                    (serverStatus.attributes.last_check ? `Last check: ${new Date(serverStatus.attributes.last_check).toLocaleString()}` : '');
             }
 
             // Update sync status
             const syncStatus = await fetchEntityState('sensor.actual_budget_last_sync');
             if (syncStatus) {
-                document.getElementById('sync-status').textContent = syncStatus.state;
-                document.getElementById('sync-status').className = `status ${syncStatus.state === 'never' ? 'not_configured' : 'online'}`;
+                const isPlaceholder = syncStatus.state === 'unavailable';
+                document.getElementById('sync-status').textContent = isPlaceholder ? '{{LAST_SYNC}}' : syncStatus.state;
+                document.getElementById('sync-status').className = `status ${isPlaceholder ? 'not_configured' : (syncStatus.state === 'never' ? 'not_configured' : 'online')}`;
             }
 
             // Update statistics
             const stats = [
-                { id: 'transactions-processed', entity: 'sensor.actual_budget_transactions_processed' },
-                { id: 'successful-imports', entity: 'sensor.actual_budget_successful_imports' },
-                { id: 'failed-transactions', entity: 'sensor.actual_budget_failed_transactions' },
-                { id: 'pending-mappings', entity: 'sensor.actual_budget_pending_mappings' }
+                { id: 'transactions-processed', entity: 'sensor.actual_budget_transactions_processed', placeholder: '{{TRANSACTIONS_PROCESSED}}' },
+                { id: 'successful-imports', entity: 'sensor.actual_budget_successful_imports', placeholder: '{{SUCCESSFUL_IMPORTS}}' },
+                { id: 'failed-transactions', entity: 'sensor.actual_budget_failed_transactions', placeholder: '{{FAILED_TRANSACTIONS}}' },
+                { id: 'pending-mappings', entity: 'sensor.actual_budget_pending_mappings', placeholder: '{{PENDING_MAPPINGS}}' }
             ];
 
             for (const stat of stats) {
                 const entity = await fetchEntityState(stat.entity);
                 if (entity) {
-                    document.getElementById(stat.id).textContent = entity.state;
+                    const isPlaceholder = entity.state === 'unavailable';
+                    const element = document.getElementById(stat.id);
+                    element.textContent = isPlaceholder ? stat.placeholder : entity.state;
+                    
+                    if (isPlaceholder) {
+                        element.className = 'stat-value placeholder-value';
+                    } else {
+                        element.className = 'stat-value real-value';
+                    }
                 }
             }
 
             // Update HP automation status
             const hpAutomationStatus = await fetchEntityState('sensor.actual_budget_hp_automation_status');
             if (hpAutomationStatus) {
-                document.getElementById('hp-automation-status').textContent = hpAutomationStatus.state;
-                document.getElementById('hp-automation-status').className = `status ${hpAutomationStatus.state}`;
-                document.getElementById('hp-automation-description').textContent = hpAutomationStatus.attributes.description || '';
-                document.getElementById('hp-automation-last-check').textContent = 
-                    hpAutomationStatus.attributes.last_check ? `Last check: ${new Date(hpAutomationStatus.attributes.last_check).toLocaleString()}` : '';
+                const isPlaceholder = hpAutomationStatus.state === 'unavailable';
+                document.getElementById('hp-automation-status').textContent = isPlaceholder ? '{{HP_AUTOMATION_STATUS}}' : hpAutomationStatus.state;
+                document.getElementById('hp-automation-status').className = `status ${isPlaceholder ? 'not_configured' : hpAutomationStatus.state}`;
+                document.getElementById('hp-automation-description').textContent = isPlaceholder ? '{{HP_AUTOMATION_DESCRIPTION}}' : (hpAutomationStatus.attributes.description || '');
+                document.getElementById('hp-automation-last-check').textContent = isPlaceholder ? '{{HP_AUTOMATION_LAST_CHECK}}' : 
+                    (hpAutomationStatus.attributes.last_check ? `Last check: ${new Date(hpAutomationStatus.attributes.last_check).toLocaleString()}` : '');
             }
 
             // Update HP transaction counts
             const hpStats = [
-                { id: 'hp-pending-count', entity: 'sensor.actual_budget_hp_pending_transactions' },
-                { id: 'hp-submitted-count', entity: 'sensor.actual_budget_hp_submitted_transactions' },
-                { id: 'hp-paid-count', entity: 'sensor.actual_budget_hp_paid_transactions' },
-                { id: 'hp-failed-count', entity: 'sensor.actual_budget_hp_failed_transactions' }
+                { id: 'hp-pending-count', entity: 'sensor.actual_budget_hp_pending_transactions', placeholder: '{{HP_PENDING}}' },
+                { id: 'hp-submitted-count', entity: 'sensor.actual_budget_hp_submitted_transactions', placeholder: '{{HP_SUBMITTED}}' },
+                { id: 'hp-paid-count', entity: 'sensor.actual_budget_hp_paid_transactions', placeholder: '{{HP_PAID}}' },
+                { id: 'hp-failed-count', entity: 'sensor.actual_budget_hp_failed_transactions', placeholder: '{{HP_FAILED}}' }
             ];
 
             for (const stat of hpStats) {
                 const entity = await fetchEntityState(stat.entity);
                 if (entity) {
-                    document.getElementById(stat.id).textContent = entity.state;
+                    const isPlaceholder = entity.state === 'unavailable';
+                    const element = document.getElementById(stat.id);
+                    element.textContent = isPlaceholder ? stat.placeholder : entity.state;
+                    
+                    if (isPlaceholder) {
+                        element.className = 'stat-value placeholder-value';
+                    } else {
+                        element.className = 'stat-value real-value';
+                    }
                 }
             }
 
             // Update HP last processing
             const hpLastProcessing = await fetchEntityState('sensor.actual_budget_hp_last_processing');
             if (hpLastProcessing) {
-                document.getElementById('hp-last-processing').textContent = hpLastProcessing.state;
-                document.getElementById('hp-last-processing').className = `status ${hpLastProcessing.state === 'never' ? 'not_configured' : 'online'}`;
+                const isPlaceholder = hpLastProcessing.state === 'unavailable';
+                document.getElementById('hp-last-processing').textContent = isPlaceholder ? '{{HP_LAST_PROCESSING}}' : hpLastProcessing.state;
+                document.getElementById('hp-last-processing').className = `status ${isPlaceholder ? 'not_configured' : (hpLastProcessing.state === 'never' ? 'not_configured' : 'online')}`;
             }
         }
 

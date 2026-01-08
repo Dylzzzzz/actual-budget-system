@@ -1,7 +1,7 @@
 name: "Actual Budget Complete"
-version: "2.3.0"
+version: "2.3.1"
 slug: actual-budget-complete
-description: "Complete Actual Budget system with HP Transaction Automation and native Home Assistant dashboard integration"
+description: "Complete Actual Budget system with HP Transaction Automation and obvious placeholder indicators"
 url: "https://github.com/Dylzzzzz/actual-budget-system"
 arch:
   - armhf
