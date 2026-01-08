@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const { spawn } = require('child_process');
 
 const PORT = 8099;
 
@@ -120,27 +121,71 @@ const server = http.createServer(async (req, res) => {
     if ((parsedUrl.pathname === '/dashboard-api/hp-transactions' || parsedUrl.pathname === '//dashboard-api/hp-transactions')) {
         console.log('HP Transactions API request');
         
-        // Return mock HP transaction data for now
-        const hpTransactions = {
-            pending: [],
-            submitted: [],
-            paid: [],
-            failed: [],
-            statistics: {
-                total_pending: 0,
-                total_submitted: 0,
-                total_paid: 0,
-                total_failed: 0,
-                last_processing: new Date().toISOString(),
-                success_rate: 100
+        try {
+            // Read HP state file if it exists
+            let hpState = {
+                transactions: {},
+                statistics: {
+                    total_processed: 0,
+                    total_submitted: 0,
+                    total_paid: 0,
+                    total_failed: 0
+                }
+            };
+            
+            const stateFile = '/data/hp-state.json';
+            if (fs.existsSync(stateFile)) {
+                const stateData = fs.readFileSync(stateFile, 'utf8');
+                hpState = JSON.parse(stateData);
             }
-        };
-        
-        res.writeHead(200, { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-        });
-        res.end(JSON.stringify(hpTransactions));
+            
+            // Organize transactions by status
+            const transactions = Object.values(hpState.transactions || {});
+            const hpTransactions = {
+                pending: transactions.filter(t => t.status === 'pending'),
+                submitted: transactions.filter(t => t.status === 'submitted'),
+                paid: transactions.filter(t => t.status === 'paid'),
+                failed: transactions.filter(t => t.status === 'failed'),
+                statistics: {
+                    total_pending: transactions.filter(t => t.status === 'pending').length,
+                    total_submitted: transactions.filter(t => t.status === 'submitted').length,
+                    total_paid: transactions.filter(t => t.status === 'paid').length,
+                    total_failed: transactions.filter(t => t.status === 'failed').length,
+                    last_processing: hpState.last_processing || null,
+                    success_rate: transactions.length > 0 ? 
+                        Math.round((transactions.filter(t => t.status === 'submitted' || t.status === 'paid').length / transactions.length) * 100) : 100
+                }
+            };
+            
+            res.writeHead(200, { 
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            });
+            res.end(JSON.stringify(hpTransactions));
+        } catch (error) {
+            console.error('Error reading HP state:', error);
+            // Return empty data on error
+            const hpTransactions = {
+                pending: [],
+                submitted: [],
+                paid: [],
+                failed: [],
+                statistics: {
+                    total_pending: 0,
+                    total_submitted: 0,
+                    total_paid: 0,
+                    total_failed: 0,
+                    last_processing: null,
+                    success_rate: 100
+                }
+            };
+            
+            res.writeHead(200, { 
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            });
+            res.end(JSON.stringify(hpTransactions));
+        }
         return;
     }
     
@@ -148,21 +193,85 @@ const server = http.createServer(async (req, res) => {
     if ((parsedUrl.pathname === '/dashboard-api/hp-process' || parsedUrl.pathname === '//dashboard-api/hp-process') && req.method === 'POST') {
         console.log('HP Process trigger request');
         
-        // Return mock processing result for now
-        const processResult = {
-            success: true,
-            message: 'HP transaction processing triggered successfully',
-            processed: 0,
-            submitted: 0,
-            failed: 0,
-            timestamp: new Date().toISOString()
-        };
-        
-        res.writeHead(200, { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-        });
-        res.end(JSON.stringify(processResult));
+        try {
+            // Execute the HP processor script
+            const { spawn } = require('child_process');
+            const hpProcessor = spawn('node', ['/opt/hp-processor.js', '--manual'], {
+                env: process.env,
+                stdio: 'pipe'
+            });
+            
+            let output = '';
+            let errorOutput = '';
+            
+            hpProcessor.stdout.on('data', (data) => {
+                output += data.toString();
+            });
+            
+            hpProcessor.stderr.on('data', (data) => {
+                errorOutput += data.toString();
+            });
+            
+            hpProcessor.on('close', (code) => {
+                try {
+                    if (code === 0 && output) {
+                        // Parse the JSON result from the processor
+                        const result = JSON.parse(output.trim().split('\n').pop());
+                        
+                        res.writeHead(200, { 
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        });
+                        res.end(JSON.stringify({
+                            success: true,
+                            message: 'HP transaction processing completed successfully',
+                            ...result
+                        }));
+                    } else {
+                        throw new Error(`Process exited with code ${code}: ${errorOutput}`);
+                    }
+                } catch (parseError) {
+                    console.error('Failed to parse HP processor output:', parseError);
+                    res.writeHead(500, { 
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    });
+                    res.end(JSON.stringify({
+                        success: false,
+                        message: 'HP processing failed',
+                        error: parseError.message
+                    }));
+                }
+            });
+            
+            // Set a timeout for the processing
+            setTimeout(() => {
+                if (!hpProcessor.killed) {
+                    hpProcessor.kill();
+                    res.writeHead(408, { 
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    });
+                    res.end(JSON.stringify({
+                        success: false,
+                        message: 'HP processing timed out',
+                        error: 'Processing took too long'
+                    }));
+                }
+            }, 60000); // 60 second timeout
+            
+        } catch (error) {
+            console.error('Error triggering HP processing:', error);
+            res.writeHead(500, { 
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            });
+            res.end(JSON.stringify({
+                success: false,
+                message: 'Failed to trigger HP processing',
+                error: error.message
+            }));
+        }
         return;
     }
     
