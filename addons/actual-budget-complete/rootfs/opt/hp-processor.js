@@ -5,12 +5,22 @@
  * 
  * This script implements the HP (Home Practice) transaction automation system.
  * It detects, processes, and tracks HP business expense transactions from Actual Budget.
+ * 
+ * Uses the official Actual Budget JavaScript API SDK.
  */
 
 const fs = require('fs');
-const path = require('path');
 const https = require('https');
 const http = require('http');
+
+// Import Actual Budget API
+let actualApi;
+try {
+    actualApi = require('@actual-app/api');
+} catch (error) {
+    console.error('Actual Budget API not found. Please install: npm install @actual-app/api');
+    process.exit(1);
+}
 
 class HPTransactionProcessor {
     constructor() {
@@ -39,6 +49,7 @@ class HPTransactionProcessor {
             const config = {
                 actual_budget_url: process.env.ACTUAL_BUDGET_URL || 'http://localhost:5006',
                 actual_budget_password: process.env.ACTUAL_BUDGET_PASSWORD,
+                actual_budget_sync_id: process.env.ACTUAL_BUDGET_SYNC_ID, // Budget file ID
                 hp_category_group_id: process.env.HP_CATEGORY_GROUP_ID || 'a85d9076-d269-4eb4-ab58-92d2f37997c6',
                 xano_api_url: process.env.XANO_API_URL,
                 xano_api_key: process.env.XANO_API_KEY,
@@ -162,70 +173,60 @@ class HPTransactionProcessor {
         }
     }
 
-    async makeActualBudgetRequest(endpoint, method = 'GET', data = null) {
-        return new Promise((resolve, reject) => {
-            const url = new URL(endpoint, this.config.actual_budget_url);
+    async initializeActualBudget() {
+        try {
+            this.log('info', 'Initializing Actual Budget API connection...');
             
-            const options = {
-                hostname: url.hostname,
-                port: url.port || (url.protocol === 'https:' ? 443 : 80),
-                path: url.pathname + url.search,
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json'
+            // Initialize the API
+            await actualApi.init({
+                serverURL: this.config.actual_budget_url,
+                password: this.config.actual_budget_password,
+                dataDir: '/tmp/actual-data'
+            });
+            
+            this.log('info', 'Actual Budget API initialized successfully');
+            
+            // Load the budget file
+            if (this.config.actual_budget_sync_id) {
+                this.log('info', `Loading budget file: ${this.config.actual_budget_sync_id}`);
+                await actualApi.downloadBudget({ syncId: this.config.actual_budget_sync_id });
+            } else {
+                // Get available budgets and use the first one
+                const budgets = await actualApi.getBudgets();
+                if (budgets.length === 0) {
+                    throw new Error('No budget files found');
                 }
-            };
-
-            if (this.config.actual_budget_password) {
-                options.headers['X-ACTUAL-PASSWORD'] = this.config.actual_budget_password;
-            }
-
-            if (data) {
-                const jsonData = JSON.stringify(data);
-                options.headers['Content-Length'] = Buffer.byteLength(jsonData);
-            }
-
-            const requestModule = url.protocol === 'https:' ? https : http;
-            const req = requestModule.request(options, (res) => {
-                let responseData = '';
                 
-                res.on('data', (chunk) => {
-                    responseData += chunk;
-                });
-                
-                res.on('end', () => {
-                    try {
-                        const parsed = responseData ? JSON.parse(responseData) : {};
-                        if (res.statusCode >= 200 && res.statusCode < 300) {
-                            resolve(parsed);
-                        } else {
-                            reject(new Error(`HTTP ${res.statusCode}: ${parsed.message || responseData}`));
-                        }
-                    } catch (error) {
-                        reject(new Error(`Parse error: ${error.message}`));
-                    }
-                });
-            });
-
-            req.on('error', (error) => {
-                reject(error);
-            });
-
-            if (data) {
-                req.write(JSON.stringify(data));
+                const budget = budgets[0];
+                this.log('info', `Loading first available budget: ${budget.name} (${budget.cloudFileId})`);
+                await actualApi.downloadBudget({ syncId: budget.cloudFileId });
             }
             
-            req.end();
-        });
+            this.log('info', 'Budget loaded successfully');
+            return true;
+            
+        } catch (error) {
+            this.log('error', `Failed to initialize Actual Budget: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async shutdownActualBudget() {
+        try {
+            await actualApi.shutdown();
+            this.log('info', 'Actual Budget API shutdown complete');
+        } catch (error) {
+            this.log('warning', `Error during Actual Budget shutdown: ${error.message}`);
+        }
     }
 
     async fetchHPTransactions() {
         this.log('info', 'Starting HP transaction detection...');
         
         try {
-            // Step 1: Get category groups to find HP category group
+            // Step 1: Get all category groups
             this.log('info', 'Fetching category groups from Actual Budget...');
-            const categoryGroups = await this.makeActualBudgetRequest('/api/category-groups');
+            const categoryGroups = await actualApi.getCategoryGroups();
             
             this.log('info', `Found ${categoryGroups.length} category groups`);
             
@@ -244,10 +245,10 @@ class HPTransactionProcessor {
             
             this.log('info', `Found HP category group: "${hpCategoryGroup.name}" (${hpCategoryGroup.id})`);
             
-            // Step 2: Get categories in HP group
+            // Step 2: Get all categories and filter for HP group
             this.log('info', 'Fetching categories in HP group...');
-            const categories = await this.makeActualBudgetRequest('/api/categories');
-            const hpCategories = categories.filter(cat => cat.cat_group === hpCategoryGroup.id);
+            const allCategories = await actualApi.getCategories();
+            const hpCategories = allCategories.filter(cat => cat.group_id === hpCategoryGroup.id);
             
             this.log('info', `Found ${hpCategories.length} HP categories:`);
             hpCategories.forEach(cat => {
@@ -259,7 +260,14 @@ class HPTransactionProcessor {
                 return [];
             }
             
-            // Step 3: Get transactions for HP categories
+            // Step 3: Get all accounts to fetch transactions from
+            this.log('info', 'Fetching accounts...');
+            const accounts = await actualApi.getAccounts();
+            const onBudgetAccounts = accounts.filter(acc => !acc.offbudget && !acc.closed);
+            
+            this.log('info', `Found ${onBudgetAccounts.length} on-budget accounts`);
+            
+            // Step 4: Get transactions for HP categories from all accounts
             this.log('info', 'Fetching transactions for HP categories...');
             const hpCategoryIds = hpCategories.map(cat => cat.id);
             
@@ -267,17 +275,32 @@ class HPTransactionProcessor {
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
             const startDate = thirtyDaysAgo.toISOString().split('T')[0];
+            const endDate = new Date().toISOString().split('T')[0];
             
-            const transactions = await this.makeActualBudgetRequest(
-                `/api/transactions?start_date=${startDate}&category_ids=${hpCategoryIds.join(',')}`
-            );
+            let allTransactions = [];
             
-            this.log('info', `Found ${transactions.length} HP transactions in the last 30 days`);
+            for (const account of onBudgetAccounts) {
+                try {
+                    const transactions = await actualApi.getTransactions(account.id, startDate, endDate);
+                    const hpTransactions = transactions.filter(t => 
+                        t.category && hpCategoryIds.includes(t.category)
+                    );
+                    
+                    if (hpTransactions.length > 0) {
+                        this.log('info', `Found ${hpTransactions.length} HP transactions in account: ${account.name}`);
+                        allTransactions = allTransactions.concat(hpTransactions);
+                    }
+                } catch (error) {
+                    this.log('warning', `Failed to fetch transactions for account ${account.name}: ${error.message}`);
+                }
+            }
             
-            // Step 4: Filter for eligible transactions
-            const eligibleTransactions = transactions.filter(transaction => {
-                // Must be reconciled (cleared = 1)
-                if (transaction.cleared !== 1) {
+            this.log('info', `Found ${allTransactions.length} total HP transactions in the last 30 days`);
+            
+            // Step 5: Filter for eligible transactions
+            const eligibleTransactions = allTransactions.filter(transaction => {
+                // Must be cleared (reconciled)
+                if (!transaction.cleared) {
                     return false;
                 }
                 
@@ -295,7 +318,8 @@ class HPTransactionProcessor {
             // Log details about each eligible transaction
             eligibleTransactions.forEach((transaction, index) => {
                 const category = hpCategories.find(cat => cat.id === transaction.category);
-                this.log('info', `  ${index + 1}. ${transaction.payee} - $${Math.abs(transaction.amount / 100).toFixed(2)} - ${category?.name || 'Unknown Category'} - ${transaction.date}`);
+                const amount = Math.abs(transaction.amount / 100).toFixed(2);
+                this.log('info', `  ${index + 1}. ${transaction.payee || 'Unknown Payee'} - $${amount} - ${category?.name || 'Unknown Category'} - ${transaction.date}`);
             });
             
             return eligibleTransactions;
@@ -466,7 +490,8 @@ class HPTransactionProcessor {
             const currentNotes = transaction.notes || '';
             const newNotes = currentNotes ? `${currentNotes} ${tag}` : tag;
             
-            await this.makeActualBudgetRequest(`/api/transactions/${transaction.id}`, 'PATCH', {
+            // Use the official API to update transaction
+            await actualApi.updateTransaction(transaction.id, {
                 notes: newNotes
             });
             
@@ -523,6 +548,9 @@ class HPTransactionProcessor {
     async processAllTransactions() {
         try {
             this.log('info', '=== Starting HP Transaction Processing Run ===');
+            
+            // Initialize Actual Budget API
+            await this.initializeActualBudget();
             
             // Update automation status
             await this.updateHASensor('sensor.actual_budget_hp_automation_status', 'running', {
@@ -589,6 +617,9 @@ class HPTransactionProcessor {
                 description: `Processing failed: ${error.message}`
             });
             throw error;
+        } finally {
+            // Always shutdown the API connection
+            await this.shutdownActualBudget();
         }
     }
 }
